@@ -216,16 +216,13 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 		/**
 		 * 1.1 如果完整 bean不存在并且这个 bean正在创建中，那么我们可以尝试从二级缓存中拿到这个 bean
 		 *     这里需要特别注意的是：isSingletonCurrentlyInCreation(beanName)这个判断
-		 *       · 什么时候这个判断=true：
-		 *       · 只有当实例化 A时需要实例化 B，此时 A的实例化流程会停住、转而进行执行 B的实例化流程
-		 *         · 此时 A就会被标记为是 isSingletonCurrentlyInCreation
-		 *       · 然后走到实例化 B的流程中、此时的 B并不是 isSingletonCurrentlyInCreation的
-		 *     顺着上面这个逻辑，我们来假设一种场景：
-		 *       · 假设 A依赖 B，B又依赖 A
-		 *       · 此时先实例化 A，走到当前流程了、这里的 singletonObject==null 但是 isSingletonCurrentlyInCreation(a)=false
+		 *       · 这个实际上就是判断当前的 beanName是否在 singletonsCurrentlyInCreation这个集合中
+		 *     还记得刚才说的循环依赖场景：
+		 *       · 我们此时正在创建 cat，但是很明显这个 this.singletonObjects.get("cat") == null
+		 *       · 同时，之前并没有任何地方向 singletonsCurrentlyInCreation.add("cat")
 		 *       · 所以这个 if逻辑走不进去、这个函数会直接返回一个 null
-		 *       · 所以我们现在最好退回去、看看这个函数返回 null以后会走什么逻辑
-		 *       · 让我们退回到 AbstractBeanFactory的 295行去看看
+		 *       · 此时我们现在最好退回去、看看这个函数返回 null以后会走什么逻辑
+		 *       · 让我们退回到 AbstractBeanFactory的 302行去看看
 		 */
 		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
 			/**
@@ -267,6 +264,10 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 								singletonObject = singletonFactory.getObject();
 								// Singleton could have been added or removed in the meantime.
 								if (this.singletonFactories.remove(beanName) != null) {
+									/**
+									 * 2.5 这里注意，加入到二级缓存的 bean实际上就是通过对象工厂得到的 bean
+									 *     也就是我们前面传入到
+									 */
 									this.earlySingletonObjects.put(beanName, singletonObject);
 								}
 								else {
@@ -361,8 +362,10 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 				}
 
 				/**
-				 * 2.4 这里又逻辑判断了一下是不是真的能去创建这个 bean
-				 *     主要就是判断这个 bean是不是正在被创建
+				 * 2.4 这里又逻辑判断了一下是不是真的能去创建这个 bean，最主要干了一件事
+				 *       · 就是把当前的 bean添加到 singletonsCurrentlyInCreation里面去
+				 *     再想想之前的循环依赖场景：
+				 *       · 我们此时正在创建 cat这个 bean、同时 cat也被加到 singletonsCurrentlyInCreation里了、代表正在被创建
 				 */
 				beforeSingletonCreation(beanName);
 				boolean newSingleton = false;

@@ -1069,6 +1069,9 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 			this.preInstantiationThread.remove();
 		}
 		if (!futures.isEmpty()) {
+			/**
+			 * 5. 等待所有线程都执行完成后、bean也全部实例化完成了
+			 */
 			try {
 				CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0])).join();
 			}
@@ -1078,6 +1081,11 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		}
 
 		// Trigger post-initialization callback for all applicable beans...
+		/**
+		 * 6. 最后触发一下 SmartInitializingSingleton这个后置处理器、在 bean实例化完成后调用 afterSingletonsInstantiated()
+		 *    Todo：懒加载的 bean的实例化应该就是在这里执行的吧？
+		 *    到此、ioc容器的启动就已经全部完成啦
+		 */
 		for (String beanName : beanNames) {
 			Object singletonInstance = getSingleton(beanName, false);
 			if (singletonInstance instanceof SmartInitializingSingleton smartSingleton) {
@@ -1093,7 +1101,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	private CompletableFuture<?> preInstantiateSingleton(String beanName, RootBeanDefinition mbd) {
 		/**
 		 * 1. 首先判断这个 bean是不是可以后台注入，可以的话就拿到之前的 BootstrapExecutor来干这件事
-		 * 	  其实后台注入就是起一个新线程去注入，没有什么特别的地方
+		 * 	  其实后台注入就是起一个新线程去注入，和正常的注入流程相比、没有什么特别的地方
 		 *    不过当前我们不是很关心后台注入的流程、我们更关心正常 bean的注入流程，所以这个后台注入的流程先跳过
 		 */
 		if (mbd.isBackgroundInit()) {

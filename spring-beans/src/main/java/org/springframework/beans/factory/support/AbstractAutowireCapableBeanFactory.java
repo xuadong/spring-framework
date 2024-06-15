@@ -621,9 +621,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		 *    spring内部会自动注入两个这种类型的后置处理器：
 		 *      · AutowiredAnnotationBeanPostProcessor：
 		 *        · 这个后置处理器的 postProcessMergedBeanDefinition()就是在为自动注入做准备工作
-		 *        · 在这个方法里面会先准备好当前的 bean中需要注入哪些属性、然后后面我们可以直接执行这个自动注入的流程
+		 *        · 在这个方法里面会先准备好当前的 bean中需要注入哪些属性、方便后面我们可以直接执行自动注入的动作
 		 *      · ApplicationListenerDetector：
-		 *        · 这个是用标记 bean已经注入完成的，这个后置处理器的 postProcessMergedBeanDefinition()很简单、可以进去看一下
+		 *        · 这个是用标记哪些 bean已经注入完成的，这个后置处理器的 postProcessMergedBeanDefinition()很简单、可以进去看一下
 		 *    所以我们现在就要去看看 AutowiredAnnotationBeanPostProcessor.postProcessMergedBeanDefinition()的逻辑、来看看这里为自动注入做了哪些准备
 		 */
 		synchronized (mbd.postProcessingLock) {
@@ -647,6 +647,10 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		 *      · 第二，当前 ioc容器必须支持循环引用
 		 *      · 第三，当前的单例 bean正在被创建
 		 *    如果以上三点都满足、那么当前 bean的创建过程就是支持早期暴露的
+		 *      · 我们会在后面看到 earlySingletonExposure=true时会对三级缓存进行一些操作来解决循环依赖问题
+		 *    再想想我们的循环依赖场景：
+		 *      · 此时我们正在创建 cat、并且在进入这个方法之前、已经 singletonsCurrentlyInCreation.add("cat")了
+		 *      · 所以此时会进入到这个 if逻辑中去
 		 */
 		boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&
 				isSingletonCurrentlyInCreation(beanName));
@@ -657,7 +661,12 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			}
 			/**
 			 * 3.1 支持早期暴露的话、我们就可以将当前 bean封装成一个对象工厂并添加到一级缓存中去、后面出现循环依赖问题时就可以使用这个工厂获取bean
-			 *     注意，这里的对象工厂返回的可能是原对象、也可能是代理对象
+			 *     注意，这里的对象工厂返回的对象实际上就是我们传给 getEarlyBeanReference()的 bean
+			 *     想一下我们之前说的循环依赖场景：
+			 *       · 此时我们正在创建 cat，然后我们现在把这个 cat封装成对象工厂加到一级缓存中去了
+			 *       · 后面创建 person的时候需要 cat、那么就可以从一级缓存中获取这个 cat了
+			 *       · 这就是第一个通过操作三级缓存来解决循环依赖问题的地方
+			 *     同时这里返回的可能是原对象也可能是代理对象、主要取决于我们传入的 bean是什么对象
 			 *       · 当一个类被 aop的时候、那么这里的 getEarlyBeanReference()就会返回代理对象，其他时候就会返回原对象
 			 *       · 其实 aop的原理就是通过生成一个代理对象、来对原对象进行加强
 			 */
@@ -673,6 +682,27 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		try {
 			/**
 			 * 4.1 属性填充、实现自动注入的过程
+			 *     先简单说一下属性填充的过程，其实就是看当前 bean需要哪些依赖、然后再执行 getBean()去获取这些依赖
+			 *     想一下我们之前的循环依赖场景：
+			 *       · 此时我们正在创建 cat，cat里面依赖了 person
+			 *       · 然后这个 populateBean()方法就会为 cat注入 person、所以我们要先找到 person
+			 *         · 此时 ioc容器中的三级缓存中只有一级缓存中有一个 cat的对象工厂（也就是上面第3.1步加入缓存的）
+			 *       · 找 person过程中就会发现当前 ioc容器中没有 person、所以就会执行 getBean("person")的逻辑
+			 *       · 那么实际上就是在执行创建 person的过程、但由于 person也是第一次创建、实际上又会再次走到这个 populateBean()方法
+			 *         · 此时我们正在创建 person、需要注入 cat对象
+			 *         · 我们发现 person里面依赖 cat、所以我们就会去三级缓存中找
+			 *         · 刚好一级缓存中有 cat的对象工厂、此时就会通过一级缓存得到 cat对象并加入到二级缓存中去
+			 *           · 这里得到的 cat和我们前面正在创建的 cat是同一个对象
+			 *           · 在调用完这个获取 cat的对象工厂后、就会将这个对象工厂从一级缓存中移除
+			 *         · 然后再把这个 cat注入 person里面去、这样子 person就算是实例化完成了
+			 *         · person实例化完成以后就会被加到三级缓存中去
+			 *           · 此时三级缓存中有一个 person的完整对象
+			 *           · 二级缓存中有一个不完整的cat对象
+			 *           · 一级缓存中什么都没有
+			 *       · 等 person实例化完成后、我们又回来创建 cat的过程中
+			 *         · 此时的 populateBean()方法会去三级缓存中寻找 person
+			 *         · 这个时候三级缓存中有一个 person的完整对象、我们直接把这个对象注入到 cat中即可
+			 *         · 至此、三级缓存成功解决了循环依赖问题！
 			 */
 			populateBean(beanName, mbd, instanceWrapper);
 
@@ -692,9 +722,12 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		}
 
 		/**
-		 * 5. 接下来
+		 * 5.
 		 */
 		if (earlySingletonExposure) {
+			/**
+			 * 5.1 首先通过三级缓存来获取当前的 bean
+			 */
 			Object earlySingletonReference = getSingleton(beanName, false);
 			if (earlySingletonReference != null) {
 				if (exposedObject == bean) {
@@ -1566,6 +1599,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		/**
 		 * 4. 后面的逻辑就可以跳过了、目前已经完全实现自动注入的过程了
+		 *    事实证明也不会走到这些代码里
 		 */
 		boolean needsDepCheck = (mbd.getDependencyCheck() != AbstractBeanDefinition.DEPENDENCY_CHECK_NONE);
 		if (needsDepCheck) {
@@ -1929,6 +1963,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			 * 2.1 如果是非合成 bean、那么就需要调用所有的 bean的后置处理器
 			 *     用户创建的 bean很明显就需要进行一些后置处理（后置处理器就是用来处理用户创建的这些 bean的）
 			 *     当前的时机是 bean实例化后、初始化前，所以需要调用后置处理器的 postProcessBeforeInitialization()
+			 *     spring已经添加了一个后置处理器：AnnotationAwareAspectJAutoProxyCreator
+			 *       · AnnotationAwareAspectJAutoProxyCreator.postProcessBeforeInitialization()实际上就是在创建 aop代理对象
+			 *       · Todo：具体看一下创建的过程以及和三级缓存的关系？
 			 */
 			wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
 		}
@@ -1946,6 +1983,10 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		if (mbd == null || !mbd.isSynthetic()) {
 			/**
 			 * 4. 初始化好了、对非合成的 bean、再调用后置处理器的 postProcessAfterInitialization()
+			 *    此时 spring已经注入了一个特殊的后置处理器：AnnotationAwareAspectJAutoProxyCreator
+			 *      · 这个就是 aop用来生成代理对象的后置处理器
+			 *      · 但是不要进到 AnnotationAwareAspectJAutoProxyCreator.postProcessAfterInitialization()里面，因为他并没有重载这个方法
+			 *      · 这个方法是其父类 AbstractAutoProxyCreator.postProcessAfterInitialization()的，进到这里面去看看
 			 */
 			wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);
 		}

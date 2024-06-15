@@ -265,10 +265,11 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		 *      · 每一级缓存实际上就是一个 map、每个 map存储的都是处于不同时期的 bean
 		 *      · 三级缓存 singletonObjects：存储的是完整的 bean、这里的 bean就是我们 ioc容器中最终注入的那个
 		 *      · 二级缓存 earlySingletonObjects：存储的是早期暴露的 bean、这里的 bean主要是用来给其他 bean进行依赖注入用的
+		 *      · 二级缓存 earlyProxyReferences： 存储的是早期暴露的被代理的 bean、这里的 bean也是给其他 bean进行依赖注入用的
 		 *      · 一级缓存 singletonFactories：存储的是创建 bean 的工厂方法、通过这个工厂方法可以创建 bean
 		 *        · 这里的工厂对象可能返回的是原对象、也可能返回的是代理对象
 		 *        · 具体返回哪个对象我们在下面会看到
-		 *      · 还有一个 creating set叫 alreadyCreated：用来存储当前正在被创建的 beanName
+		 *      · 还有一个 creating set叫 singletonsCurrentlyInCreation：用来存储当前正在被创建的 beanName
 		 *      · 还有一个 alreadyCreated：用来存储创建好的 beanName
 		 */
 		Object beanInstance;
@@ -277,6 +278,12 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		/**
 		 * 3. 首先我们尝试在缓存中获取这个 bean
 		 *    这里获取的是会从三级、二级、一级缓存中逐个去获取这个 bean
+		 *    此时我们开始思考一个循环依赖的场景，实际上也就是我项目中写的场景：
+		 *      · 需要向 ioc容器中注入一个 cat和一个 person对象
+		 *      · 其中 cat依赖 person、person也依赖 cat
+		 *      · 这就是典型的循环依赖场景，我们来看看 spring是如何解决这个循环依赖场景的
+		 *    由于 Cat.java文件在 Person.java文件的上面，所以会先实例化 cat对象
+		 *      · 始终记住这个循环依赖场景、这对我们理解三级缓存很有用
 		 */
 		Object sharedInstance = getSingleton(beanName);
 		if (sharedInstance != null && args == null) {
@@ -297,8 +304,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			// We're assumably within a circular reference.
 			/**
 			 * 4. 从缓存中获取不到的时候、说明是第一次实例化这个 bean
-			 *    还记得我们前面假设的场景吗：
-			 *      · 此时 A正在第一次被实例化、B还没有开始实例化，记住这个前提、接着往下走
+			 *      · 在前面说的循环依赖场景中，当前正在创建 cat
 			 *    这里是要判断这个 bean是不是正在被实例化了，如果 bean已经在实例化了、就说明我们当前这个线程正在重复初始化，需要报错
 			 *      · 做判断就是因为我们之所以走到这儿就是因为 isSingletonCurrentlyInCreation(a)=false
 			 *      · 所以这里要再多判断一下、以免出现问题
@@ -427,6 +433,8 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					/**
 					 * 9.1 这里调用了 getSingleton()，这个方法是真正创建单例 bean的地方
 					 *     这里的第二个参数是一个 lambda表达式，一会进入到 getSingleton()里面以后肯定会调用这个 lambda表达式，所以我们先看一下这个 lambda表达式的逻辑
+					 *     这时候在想想前面说的那个循环依赖的场景：
+					 *       · 我们正在创建 cat
 					 */
 					sharedInstance = getSingleton(beanName, () -> {
 						/**

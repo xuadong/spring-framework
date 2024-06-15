@@ -313,6 +313,9 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 	@Override
 	@Nullable
 	public Object postProcessAfterInitialization(@Nullable Object bean, String beanName) {
+		/**
+		 * 这里逻辑比较简单、就是看是否需要生成代理（目前生成代理应该用的都是 cjlib）
+		 */
 		if (bean != null) {
 			Object cacheKey = getCacheKey(bean.getClass(), beanName);
 			if (this.earlyBeanReferences.remove(cacheKey) != bean) {
