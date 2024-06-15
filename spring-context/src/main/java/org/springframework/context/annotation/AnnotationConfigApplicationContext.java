@@ -65,9 +65,27 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 * through {@link #register} calls and then manually {@linkplain #refresh refreshed}.
 	 */
 	public AnnotationConfigApplicationContext() {
+		/**
+		 * 1. StartupStep这个组件的作用主要是用来记录一下当前 spring的启动流程进行到哪一步了、并记录一下时间之类的
+		 *    以后看到这个东西可以直接跳过（这就相当于打了个日志的意思，不是学习的重点）
+		 */
 		StartupStep createAnnotatedBeanDefReader = getApplicationStartup().start("spring.context.annotated-bean-reader.create");
+
+		/**
+		 * 2. 创建一个 AnnotatedBeanDefinitionReader对象，
+		 * 	  Todo：这玩意干啥用的？
+		 */
 		this.reader = new AnnotatedBeanDefinitionReader(this);
+
+		/**
+		 * 跳过
+		 */
 		createAnnotatedBeanDefReader.end();
+
+		/**
+		 * 3. 创建一个 ClassPathBeanDefinitionScanner对象，用来扫描 BeanDefinition
+		 * 	  主要作用就是找到所有的 BeanDefinition
+		 */
 		this.scanner = new ClassPathBeanDefinitionScanner(this);
 	}
 
@@ -100,8 +118,23 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 * @param basePackages the packages to scan for component classes
 	 */
 	public AnnotationConfigApplicationContext(String... basePackages) {
+		/**
+		 * 1. 调用本方法的无参构造器
+		 * 	  主要是进行一些参数初始化的过程
+		 */
 		this();
+
+		/**
+		 * 2. 扫描传进来的包路径
+		 * 	  这里扫描主要是获取指定包路径下的所有 BeanDefinition
+		 * 	  不清楚 BeanDefinition是什么：https://blog.csdn.net/paralysed/article/details/119592783
+		 * 	  （简单看看就好，上面废话太多了，说白了 BeanDefinition就是 Bean的元数据）
+		 */
 		scan(basePackages);
+
+		/**
+		 * 3. refresh()是真正注入 ioc容器的过程，也是学习的重点
+		 */
 		refresh();
 	}
 
@@ -179,10 +212,23 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 */
 	@Override
 	public void scan(String... basePackages) {
+		/**
+		 * 以后看到这种断言、直接跳过即可
+		 * 包括下面的 StartupStep registerComponentClass，跳过跳过
+		 */
 		Assert.notEmpty(basePackages, "At least one base package must be specified");
 		StartupStep scanPackages = getApplicationStartup().start("spring.context.base-packages.scan")
 				.tag("packages", () -> Arrays.toString(basePackages));
+
+		/**
+		 * 1. 这里开始扫描包路径
+		 *    这里的 basePackages是我们传进来的字符串，也就是本案例中的 com.adong.study.bean
+		 */
 		this.scanner.scan(basePackages);
+
+		/**
+		 * 跳过跳过
+		 */
 		scanPackages.end();
 	}
 

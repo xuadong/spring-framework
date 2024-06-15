@@ -172,6 +172,10 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	private final Map<Class<?>, Object> resolvableDependencies = new ConcurrentHashMap<>(16);
 
 	/** Map of bean definition objects, keyed by bean name. */
+	/**
+	 * 这个 map初始化的时候设置了容量是 256，注意啊！容量是256！不是size=256！
+	 * 这里用的是 ConcurrentHashMap而不是普通的 HashMap，主要是因为 spring后面提供了多线程启动 ioc容器的能力，所以为了避免兵法问题、使用了 ConcurrentHashMap
+ 	 */
 	private final Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
 
 	/** Map from bean name to merged BeanDefinitionHolder. */
@@ -397,6 +401,10 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 
 	@Override
 	public int getBeanDefinitionCount() {
+		/**
+		 * 这里返回的是 this.beanDefinitionMap.size()
+		 * 去看看 beanDefinitionMap就知道了
+		 */
 		return this.beanDefinitionMap.size();
 	}
 
@@ -1007,20 +1015,48 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 
 	@Override
 	public void preInstantiateSingletons() throws BeansException {
+		/**
+		 * 跳过打日志
+		 */
 		if (logger.isTraceEnabled()) {
 			logger.trace("Pre-instantiating singletons in " + this);
 		}
 
 		// Iterate over a copy to allow for init methods which in turn register new bean definitions.
 		// While this may not be part of the regular factory bootstrap, it does otherwise work fine.
+		/**
+		 * 1. 将所有的 beanName存到一个新的 List里面，后面方便遍历
+		 */
 		List<String> beanNames = new ArrayList<>(this.beanDefinitionNames);
 
 		// Trigger initialization of all non-lazy singleton beans...
+		/**
+		 * 2. 创建 futures用来并发的实例化
+		 *    关于 feature是什么：https://www.bilibili.com/video/BV1AN411S72m/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+		 *    其实每个 future就是一个异步线程，我们可以创建很多个异步线程存到 futures里面
+		 *    然后调用CompletableFuture.allOf()方法、这个方法就会等待所有线程都执行完成后再往下走，是一套比较实用的并发 api
+		 */
 		List<CompletableFuture<?>> futures = new ArrayList<>();
 		this.preInstantiationThread.set(PreInstantiation.MAIN);
 		try {
 			for (String beanName : beanNames) {
+				/**
+				 * 3. 在当前容器中获取 RootBeanDefinition
+				 *    RootBeanDefinition是什么？
+				 *      · 在 spring的发展过程中，其实不只有一种 BeanDefinition、是有很多很多种的
+				 *      · 但是 spring为了能够对所有类型的 BeanDefinition进行归一化处理，抽象出了一个最普适的 RootBeanDefinition
+				 *      · 这里可以简单理解为就是 BeanDefinition，不用深究每种 BeanDefinition有什么区别和联系
+				 */
 				RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
+
+				/**
+				 * 4. 如果当前 BeanDefinition并不是一个抽象类的、并且是单例的、那么我们现在就去实例化这个 bean
+				 *    这里有两个点：
+				 *      · 第一点，抽象类是不能注入到 ioc容器中的（Todo：可以做个实验试试）
+				 *      · 第二点，只有作用域是单例的 bean才会在 ioc容器的时候实例化（其他作用域的时候基本是需要了就实例化一个、每次实例化的不是同一个 bean）
+				 *    这里的 preInstantiateSingleton()就是根据 beanName和 BeanDefinition来实例化一个 bean
+				 *    所以进去 preInstantiateSingleton(beanName, mbd)看看
+				 */
 				if (!mbd.isAbstract() && mbd.isSingleton()) {
 					CompletableFuture<?> future = preInstantiateSingleton(beanName, mbd);
 					if (future != null) {
@@ -1055,6 +1091,11 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 
 	@Nullable
 	private CompletableFuture<?> preInstantiateSingleton(String beanName, RootBeanDefinition mbd) {
+		/**
+		 * 1. 首先判断这个 bean是不是可以后台注入，可以的话就拿到之前的 BootstrapExecutor来干这件事
+		 * 	  其实后台注入就是起一个新线程去注入，没有什么特别的地方
+		 *    不过当前我们不是很关心后台注入的流程、我们更关心正常 bean的注入流程，所以这个后台注入的流程先跳过
+		 */
 		if (mbd.isBackgroundInit()) {
 			Executor executor = getBootstrapExecutor();
 			if (executor != null) {
@@ -1082,6 +1123,12 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 						"without bootstrap executor configured - falling back to mainline initialization");
 			}
 		}
+
+		/**
+		 * 2. 如果不是后台注入、并且不是懒加载的 bean，就直接实例化这个 bean
+		 *    Todo：懒加载的 bean是什么时候注入的呢？
+		 *    继续进入 instantiateSingleton(beanName)看看
+		 */
 		if (!mbd.isLazyInit()) {
 			instantiateSingleton(beanName);
 		}
@@ -1105,7 +1152,19 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	}
 
 	private void instantiateSingleton(String beanName) {
+		/**
+		 * 1. 先判断是不是一个 FactoryBean
+		 *    FactoryBean是什么：https://www.bilibili.com/video/BV1UF411L7QR/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+		 *    说白了这就是利用了工厂模式、先创建一个工厂，然后当你需要具体的对象时、再通过工厂把这个对象返回回来
+		 *    这个 isFactoryBean(beanName)的判断原则就是看这个 bean有没有实现 FactoryBean这个接口
+		 */
 		if (isFactoryBean(beanName)) {
+			/**
+			 * 2. 如果是一个 FactoryBean、那么就会向 ioc容器中注入两个 bean
+			 *      · 一个是原本的 bean，bean的名字就是 "beanName"
+			 *      · 一个是 FactoryBean，bean的名字就是 "&beanName"
+			 *    而真正实例化 bean的过程是在 getBean()里面，不管是不是 FactoryBean、都会走进这个方法
+			 */
 			Object bean = getBean(FACTORY_BEAN_PREFIX + beanName);
 			if (bean instanceof SmartFactoryBean<?> smartFactoryBean && smartFactoryBean.isEagerInit()) {
 				getBean(beanName);
@@ -1486,6 +1545,10 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	public Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName,
 			@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) throws BeansException {
 
+		/**
+		 * 1. 首先处理一些特殊类型的依赖
+		 *    比如 Optional、ObjectFactory、javaxInjectProviderClass
+		 */
 		descriptor.initParameterNameDiscovery(getParameterNameDiscoverer());
 		if (Optional.class == descriptor.getDependencyType()) {
 			return createOptionalDependency(descriptor, requestingBeanName);
@@ -1498,12 +1561,20 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 			return new Jsr330Factory().createDependencyProvider(descriptor, requestingBeanName);
 		}
 		else if (descriptor.supportsLazyResolution()) {
+			/**
+			 * 2. 然后判断当前的依赖是否可以懒加载
+			 *    可以懒加载的话就可以先把这个对象创建出来但是不去填充、等后面别的 bean都创建完了再去填充就好了
+			 */
 			Object result = getAutowireCandidateResolver().getLazyResolutionProxyIfNecessary(
 					descriptor, requestingBeanName);
 			if (result != null) {
 				return result;
 			}
 		}
+		/**
+		 * 3. 正常情况下会走这个方法
+		 *    但是这个方法太深了。。。里面看不懂了
+		 */
 		return doResolveDependency(descriptor, requestingBeanName, autowiredBeanNames, typeConverter);
 	}
 

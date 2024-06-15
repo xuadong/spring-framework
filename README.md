@@ -1,38 +1,10 @@
-# <img src="framework-docs/src/docs/spring-framework.png" width="80" height="80"> Spring Framework [![Build Status](https://github.com/spring-projects/spring-framework/actions/workflows/build-and-deploy-snapshot.yml/badge.svg?branch=main)](https://github.com/spring-projects/spring-framework/actions/workflows/build-and-deploy-snapshot.yml?query=branch%3Amain) [![Revved up by Develocity](https://img.shields.io/badge/Revved%20up%20by-Develocity-06A0CE?logo=Gradle&labelColor=02303A)](https://ge.spring.io/scans?search.rootProjectNames=spring)
-
-This is the home of the Spring Framework: the foundation for all [Spring projects](https://spring.io/projects). Collectively the Spring Framework and the family of Spring projects are often referred to simply as "Spring". 
-
-Spring provides everything required beyond the Java programming language for creating enterprise applications for a wide range of scenarios and architectures. Please read the [Overview](https://docs.spring.io/spring-framework/reference/overview.html) section of the reference documentation for a more complete introduction.
-
-## Code of Conduct
-
-This project is governed by the [Spring Code of Conduct](CODE_OF_CONDUCT.adoc). By participating, you are expected to uphold this code of conduct. Please report unacceptable behavior to spring-code-of-conduct@spring.io.
-
-## Access to Binaries
-
-For access to artifacts or a distribution zip, see the [Spring Framework Artifacts](https://github.com/spring-projects/spring-framework/wiki/Spring-Framework-Artifacts) wiki page.
-
-## Documentation
-
-The Spring Framework maintains reference documentation ([published](https://docs.spring.io/spring-framework/reference/) and [source](framework-docs/modules/ROOT)), GitHub [wiki pages](https://github.com/spring-projects/spring-framework/wiki), and an
-[API reference](https://docs.spring.io/spring-framework/docs/current/javadoc-api/). There are also [guides and tutorials](https://spring.io/guides) across Spring projects.
-
-## Micro-Benchmarks
-
-See the [Micro-Benchmarks](https://github.com/spring-projects/spring-framework/wiki/Micro-Benchmarks) wiki page.
-
-## Build from Source
-
-See the [Build from Source](https://github.com/spring-projects/spring-framework/wiki/Build-from-Source) wiki page and the [CONTRIBUTING.md](CONTRIBUTING.md) file.
-
-## Continuous Integration Builds
-
-Information regarding CI builds can be found in the [Spring Framework Concourse pipeline](ci/README.adoc) documentation.
-
-## Stay in Touch
-
-Follow [@SpringCentral](https://twitter.com/springcentral), [@SpringFramework](https://twitter.com/springframework), and its [team members](https://twitter.com/springframework/lists/team/members) on 𝕏. In-depth articles can be found at [The Spring Blog](https://spring.io/blog/), and releases are announced via our [releases feed](https://spring.io/blog/category/releases).
-
-## License
-
-The Spring Framework is released under version 2.0 of the [Apache License](https://www.apache.org/licenses/LICENSE-2.0).
+1. 欢迎大家来到我的分支来看这个笔记，在开始看源码之前、先说点东西：
+   1. 首先，这个笔记主要是针对有一定 spring基础的朋友的，因为我并不会面面俱到的从 0看起，所以里面有些东西是需要大家有一定基础才能看懂的
+   2. 这个笔记更适合已经工作了or实习了一段时间、使用了一段时间 spring的朋友
+   3. 如果基础差的朋友可以看以下几个教程：
+      * 学习 spring基础：https://juejin.cn/book/6857911863016390663?enter_from=course_center&utm_source=course_center
+      * 楠老师的 spring源码：https://www.bilibili.com/cheese/play/ep688681?t=1126&csource=common_hp_history_null
+2. 我们先做一些准备工作
+   1. 先下载 gradle并配置镜像
+   2. gradle版本是 8.7的版本、jdk是 17
+3. 然后我们从 com.adong.study.Main 类开始看即可

@@ -344,6 +344,10 @@ public class ClassPathScanningCandidateComponentProvider implements EnvironmentC
 	 * @return a corresponding Set of autodetected bean definitions
 	 */
 	public Set<BeanDefinition> findCandidateComponents(String basePackage) {
+		/**
+		 * 其实这里不用太仔细看了，无非就是根据传入的 basePackage找到下面所有的加了@Component注解的类的 class文件就可以了
+		 * 里面对路径的处理逻辑可以看一下（因为我们传进来的是包路径，实际上需要扫面的是类路径，中间有个转换逻辑）
+		 */
 		if (this.componentsIndex != null && indexSupportsIncludeFilters()) {
 			return addCandidateComponentsFromIndex(this.componentsIndex, basePackage);
 		}

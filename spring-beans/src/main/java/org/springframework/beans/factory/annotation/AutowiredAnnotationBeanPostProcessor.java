@@ -290,6 +290,10 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 	@Override
 	public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
 		// Register externally managed config members on bean definition.
+		/**
+		 * 1. 这里会获取我们当前 bean需要自动注入哪些属性、以及这些属性的元数据
+		 *    然后把这些东西 set到 beanDefinition中去、后面我们就可以通过 beanDefinition完成自动注入了
+		 */
 		findInjectionMetadata(beanName, beanType, beanDefinition);
 
 		// Use opportunity to clear caches which are not needed after singleton instantiation.
@@ -340,7 +344,15 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 	}
 
 	private InjectionMetadata findInjectionMetadata(String beanName, Class<?> beanType, RootBeanDefinition beanDefinition) {
+		/**
+		 * 1. 进来看下、主要实现逻辑是在 findAutowiringMetadata()中
+		 *    其实里面不用太看了、无非就是一些反射的相关操作
+		 */
 		InjectionMetadata metadata = findAutowiringMetadata(beanName, beanType, null);
+
+		/**
+		 * 2. 这个方法会把当前 bean需要自动注入的属性、以及元数据给 set到 beanDefinition中去
+		 */
 		metadata.checkConfigMembers(beanDefinition);
 		return metadata;
 	}
@@ -503,8 +515,15 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 
 	@Override
 	public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, String beanName) {
+		/**
+		 * 1. 首先获取需要注入的属性的原数据
+		 */
 		InjectionMetadata metadata = findAutowiringMetadata(beanName, bean.getClass(), pvs);
 		try {
+			/**
+			 * 2. 通过反射、进行注入
+			 *    但是这个代码太深了，里面实在看不懂，建议大家结合 debug自己看一下，这一块太深了
+			 */
 			metadata.inject(bean, beanName, pvs);
 		}
 		catch (BeanCreationException ex) {
@@ -541,17 +560,31 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 
 	private InjectionMetadata findAutowiringMetadata(String beanName, Class<?> clazz, @Nullable PropertyValues pvs) {
 		// Fall back to class name as cache key, for backwards compatibility with custom callers.
+		/**
+		 * 1. 获取当前的 beanName作为缓存的 key
+		 */
 		String cacheKey = (StringUtils.hasLength(beanName) ? beanName : clazz.getName());
+
 		// Quick check on the concurrent map first, with minimal locking.
+		/**
+		 * 2. 尝试从缓存中获取这个元数据（第一次进来肯定是没有的）
+		 */
 		InjectionMetadata metadata = this.injectionMetadataCache.get(cacheKey);
 		if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 			synchronized (this.injectionMetadataCache) {
+				/**
+				 * 3. 又是一个双重检查
+				 */
 				metadata = this.injectionMetadataCache.get(cacheKey);
 				if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 					if (metadata != null) {
 						metadata.clear(pvs);
 					}
 					metadata = buildAutowiringMetadata(clazz);
+
+					/**
+					 * 4. 加入缓存、下次如果别的实例还需要注入这个类型的属性那么直接从缓存中取就可以了
+					 */
 					this.injectionMetadataCache.put(cacheKey, metadata);
 				}
 			}

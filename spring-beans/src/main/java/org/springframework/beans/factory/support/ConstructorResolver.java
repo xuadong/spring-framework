@@ -135,6 +135,10 @@ class ConstructorResolver {
 	public BeanWrapper autowireConstructor(String beanName, RootBeanDefinition mbd,
 			@Nullable Constructor<?>[] chosenCtors, @Nullable Object[] explicitArgs) {
 
+		/**
+		 * 1. 首先创建一个 BeanWrapper的实例，这个实例就是我们要返回的结果
+		 *    然后调用 initBeanWrapper()、这个方法的作用是加上一些类型转换器、自定义编辑器等
+		 */
 		BeanWrapperImpl bw = new BeanWrapperImpl();
 		this.beanFactory.initBeanWrapper(bw);
 
@@ -142,22 +146,39 @@ class ConstructorResolver {
 		ArgumentsHolder argsHolderToUse = null;
 		Object[] argsToUse = null;
 
+		/**
+		 * 2. 这里的 explicitArgs指的就是当前这个构造方法中需要自动注入的这些参数
+		 *    目前这个 explicitArgs是 null，所以会走到 else的逻辑里面
+		 */
 		if (explicitArgs != null) {
 			argsToUse = explicitArgs;
 		}
 		else {
+			/**
+			 * 2.1 接下来需要知道当前构造器需要哪些参数
+			 */
 			Object[] argsToResolve = null;
 			synchronized (mbd.constructorArgumentLock) {
 				constructorToUse = (Constructor<?>) mbd.resolvedConstructorOrFactoryMethod;
 				if (constructorToUse != null && mbd.constructorArgumentsResolved) {
 					// Found a cached constructor...
+					/**
+					 * 2.2 先尝试从缓存中获取
+					 *     这个 mbd.resolvedConstructorArguments就是缓存，之前如果已经构造过了、那么就会将对应的参数存到这个属性值中
+					 */
 					argsToUse = mbd.resolvedConstructorArguments;
 					if (argsToUse == null) {
+						/**
+						 * 2.3 缓存中没有的话就去 preparedConstructorArguments中去
+						 */
 						argsToResolve = mbd.preparedConstructorArguments;
 					}
 				}
 			}
 			if (argsToResolve != null) {
+				/**
+				 * 2.4 接下来我知道这个构造器需要哪些参数了（需要 argsToResolve）、开始准备这些参数的具体值准备后面拿来构造实例用（argsToUse）
+				 */
 				argsToUse = resolvePreparedArguments(beanName, mbd, bw, constructorToUse, argsToResolve);
 			}
 		}
@@ -817,12 +838,18 @@ class ConstructorResolver {
 	private Object[] resolvePreparedArguments(String beanName, RootBeanDefinition mbd, BeanWrapper bw,
 			Executable executable, Object[] argsToResolve) {
 
+		/**
+		 * 1. 拿到类型转换器
+		 */
 		TypeConverter customConverter = this.beanFactory.getCustomTypeConverter();
 		TypeConverter converter = (customConverter != null ? customConverter : bw);
 		BeanDefinitionValueResolver valueResolver =
 				new BeanDefinitionValueResolver(this.beanFactory, beanName, mbd, converter);
 		Class<?>[] paramTypes = executable.getParameterTypes();
 
+		/**
+		 * 2. 遍历每个需要的参数、并且去获取可用的这个类型的参数
+		 */
 		Object[] resolvedArgs = new Object[argsToResolve.length];
 		for (int argIndex = 0; argIndex < argsToResolve.length; argIndex++) {
 			Object argValue = argsToResolve[argIndex];
@@ -830,6 +857,9 @@ class ConstructorResolver {
 			boolean convertNecessary = false;
 			if (argValue instanceof ConstructorDependencyDescriptor descriptor) {
 				try {
+					/**
+					 * 2.1 这里是具体的获取的方法
+					 */
 					argValue = resolveAutowiredArgument(descriptor, paramType, beanName,
 							null, converter, true);
 				}
@@ -901,6 +931,9 @@ class ConstructorResolver {
 	Object resolveAutowiredArgument(DependencyDescriptor descriptor, Class<?> paramType, String beanName,
 			@Nullable Set<String> autowiredBeanNames, TypeConverter typeConverter, boolean fallback) {
 
+		/**
+		 * 1. 特殊类型的处理，没见过、不知道干啥用的
+		 */
 		if (InjectionPoint.class.isAssignableFrom(paramType)) {
 			InjectionPoint injectionPoint = currentInjectionPoint.get();
 			if (injectionPoint == null) {
@@ -910,6 +943,10 @@ class ConstructorResolver {
 		}
 
 		try {
+			/**
+			 * 2. 这里是真正获取依赖的地方
+			 *    实际上调用的是 DefaultListableBeanFactory.resolveDependency()
+			 */
 			return this.beanFactory.resolveDependency(descriptor, beanName, autowiredBeanNames, typeConverter);
 		}
 		catch (NoUniqueBeanDefinitionException ex) {

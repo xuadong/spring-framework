@@ -340,6 +340,10 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 */
 	@Override
 	public ConfigurableEnvironment getEnvironment() {
+		/**
+		 * 这个获取的方法实际上就是 getOrCreate()
+		 * createEnvironment()就是 new了一个标准环境对象出来
+		 */
 		if (this.environment == null) {
 			this.environment = createEnvironment();
 		}
@@ -584,52 +588,137 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 
 	@Override
 	public void refresh() throws BeansException, IllegalStateException {
+		/**
+		 * 1. 上锁，这里的锁就是 jdk自带的 ReentrantLock
+		 */
 		this.startupShutdownLock.lock();
 		try {
+			/**
+			 * 2. 标识当前线程
+			 * 	  主要还是因为 spring后期支持多线程并发启动 ioc了，这里需要记录一下当前线程
+			 */
 			this.startupShutdownThread = Thread.currentThread();
 
+			/**
+			 * 跳过跳过
+			 */
 			StartupStep contextRefresh = this.applicationStartup.start("spring.context.refresh");
 
 			// Prepare this context for refreshing.
+			/**
+			 * 3. 准备一些前置工作
+			 *    主要是一些环境、环境配置、早期监听器等
+			 */
 			prepareRefresh();
 
 			// Tell the subclass to refresh the internal bean factory.
+			/**
+			 * 4. 获取 beanFactory
+			 *    到目前为止，我们都只是做一些前置的准备工作：比如获取 BeanDefinition、设置环境及其参数等
+			 *    接下来我们就要获取真正的 ioc容器了（也就是这个 beanFactory）
+			 */
 			ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
 
 			// Prepare the bean factory for use in this context.
+			/**
+			 * 5. 准备一下 beanFactory
+			 *    比如 ClassLoader（类加载器）、BeanExpressionResolver（表达式解析器，就是解析 ${exp}的组件）之类的
+			 */
 			prepareBeanFactory(beanFactory);
 
 			try {
 				// Allows post-processing of the bean factory in context subclasses.
+				/**
+				 * 6. 这里是 spring设置了一个后置处理的时机，主要是留给子类拓展用的
+				 *    注意区分一下，这并不是处理 beanFactory的后置处理器，这个方法名可能会有点歧义
+				 */
 				postProcessBeanFactory(beanFactory);
 
+				/**
+				 * 跳过跳过
+				 */
 				StartupStep beanPostProcess = this.applicationStartup.start("spring.context.beans.post-process");
+
 				// Invoke factory processors registered as beans in the context.
+				/**
+				 *	7. 这里才是调用 beanFactory的后置处理器
+				 * 	   如果你希望在 beanFactory初始化完成以后进行一些逻辑处理、那么就可以配置一些 beanFactory的后置处理器，此时就会被调用
+				 * 	   实现逻辑就是遍历当前所有的 BeanDefinition、然后看哪些是实现了 BeanDefinitionRegistryPostProcessor的、然后调用他们的 postProcessor()
+				 * 	     · 里面还包含一些对@PriorityOrder和@Order的排序逻辑（这俩注解决定了后置处理器的先后顺序）、其他没什么特别的
+				 */
 				invokeBeanFactoryPostProcessors(beanFactory);
+
 				// Register bean processors that intercept bean creation.
+				/**
+				 * 8. 注入 bean的后置处理器（实例化所有的 bean的后置处理器）
+				 * 	  注意区分一下 beanFactory的后置处理器和 bean的后置处理器，主要区别就是：一个是在 beanFactory初始化后调用、一个是在每个 bean的初始化后调用
+				 * 	  这里要先把这些 bean的后置处理器对应的 bean注入到 ioc容器中、后面处理每个 bean的时候才能调用这些处理器
+				 * 	  这个实例化的过程和普通的 bean的实例化过程有一点区别
+				 * 	    · 普通的 bean的实例化时需要处理内部依赖，比如 a依赖了 b、那么就需要把 b先实例化出来，然后才能把 a实例化出来
+				 * 	    · 但是这里 bean的后置处理器的实例化过程是不会处理这种依赖问题的（毕竟谁家好人给后置处理器注入依赖啊）
+				 * 	  处理的逻辑和上面第七步的逻辑有点像：
+				 * 	    · 遍历所有的 BeanDefinition、看哪些实现了 BeanPostProcessor接口的、把这些 bean实例化并且存到一个专门存储后置处理器的 map里面
+				 * 	    · 同样包含一些对@PriorityOrder和@Order的排序逻辑
+				 */
 				registerBeanPostProcessors(beanFactory);
+
+				/**
+				 * 跳过跳过
+				 */
 				beanPostProcess.end();
 
 				// Initialize message source for this context.
+				/**
+				 * 9. 初始化国际化的组件
+				 *    主要就是你返回一个 hello、在不同的语言环境下这个 hello要变成不同的内容（英文=hello、中文=你好、日语=こんにちは (konnichiwa)）
+				 *    这个就叫国际化的功能，而这个 MessageSource就是完成这个功能的
+				 */
 				initMessageSource();
 
 				// Initialize event multicaster for this context.
+				/**
+				 * 10. 初始化事件广播器
+				 *     学到这儿应该已经知道什么是事件监听器了，既然有监听的人、那就要有广播的人，这里的 ApplicationEventMulticaster就是负责广播的组件
+				 *     具体如何广播-监听是如何实现的、前面那个关于监听器的视频里面有说
+				 *       · 实际上就是当一个事件 event发生的时候、就会调用广播器的 multicastEvent()
+				 *       · multicastEvent()会从所有 ioc容器中中获取到所有的监听器、并且筛选出监听这个 event的监听器
+				 *       · 然后调用监听器对应的处理方法即可
+			 	 *     但是注意哈，我们目前还没有初始化任何监听器
+				 *     前面第3步只是初始化了早期监听器 earlyApplicationListeners、但是没有初始化 applicationListeners，applicationListeners是在第12步才初始化的
+				 */
 				initApplicationEventMulticaster();
 
 				// Initialize other special beans in specific context subclasses.
+				/**
+				 * 11. 这个方法看着很厉害，但其实没什么用，他是一个空方法、留着给子类拓展用的，真正的实例化过程不在这儿
+				 */
 				onRefresh();
 
 				// Check for listener beans and register them.
+				/**
+				 * 12. 注入所有的监听器
+				 *     因为我们马上要开始实例化所有的 bean了、在实例化的过程中会发出各种各样的 event，所以我们要先把所有的监听器都实例化好、好去监听这些 event
+				 */
 				registerListeners();
 
 				// Instantiate all remaining (non-lazy-init) singletons.
+				/**
+				 * 13. 来咯，开始实例化咯，等了这么久终于等到了实例化的过程
+				 */
 				finishBeanFactoryInitialization(beanFactory);
 
 				// Last step: publish corresponding event.
+				/**
+				 * 14. 实例化完成，结束咯，这个方法主要是清理一些缓存、临时的组件、临时的资源等等
+				 */
 				finishRefresh();
 			}
 
 			catch (RuntimeException | Error ex ) {
+				/**
+				 * 15. 接下来是 ioc容器启动失败的场景
+				 *     启动失败了就打印一些日志、销毁一些组件、清理一些缓存等等，不多看、拜拜œ
+				 */
 				if (logger.isWarnEnabled()) {
 					logger.warn("Exception encountered during context initialization - " +
 							"cancelling refresh attempt: " + ex);
@@ -661,10 +750,16 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 */
 	protected void prepareRefresh() {
 		// Switch to active.
+		/**
+		 * 1. 记录开始时间、将当前上下文设置为激活状态
+		 */
 		this.startupDate = System.currentTimeMillis();
 		this.closed.set(false);
 		this.active.set(true);
 
+		/**
+		 * 2. 打印日志
+		 */
 		if (logger.isDebugEnabled()) {
 			if (logger.isTraceEnabled()) {
 				logger.trace("Refreshing " + this);
@@ -675,13 +770,33 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		}
 
 		// Initialize any placeholder property sources in the context environment.
+		/**
+		 * 3. 初始化 propertySource，默认是个空实现
+		 *    debug进来发现其实走的就是空实现的逻辑，我估计和中的启动环境有一定关系（在不同的环境下会调用不同的方法，具体等后面学 spring-boot再看）
+		 */
 		initPropertySources();
 
 		// Validate that all properties marked as required are resolvable:
 		// see ConfigurablePropertyResolver#setRequiredProperties
+		/**
+		 * 4. 获取当前环境、并验证是否有必要的 Property配置，没有的话会报错
+		 *    具体哪些是必要的配置、应该是不同环境下有不同的配置，和上面第三步一样、具体等后面学 spring-boot再看
+		 *    debug进来发现这里调用的其实是 AbstractEnvironment.validateRequiredProperties()
+		 */
 		getEnvironment().validateRequiredProperties();
 
 		// Store pre-refresh ApplicationListeners...
+		/**
+		 * 5. 初始化早起监听器 earlyApplicationListeners
+		 *    （监听器是什么：https://www.bilibili.com/video/BV1dp4y167di/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f）
+		 * 	  这里会看到实际上是将 this.applicationListeners拷贝了一份
+		 * 	  那么 this.applicationListeners是什么时候有的呢？
+		 * 	    · debug进来发现这里的 this.applicationListeners其实是空的，除非你手动的去添加
+		 * 	    · 但是在 spring-boot中会有一些框架自带的监听器
+		 * 	  这里的 earlyApplicationListeners实际上想要的是这些所有框架自带的监听器
+		 * 	    · 在此时、我们自己写的 bean实际上还没注入到 ioc容器中，所以也不可能存在任何我们写的监听器存在 applicationListeners中
+		 * 	    · 这里的 earlyApplicationListeners主要就是要存储框架自带的监听器、这些监听器可能需要在 bean的实例化过程中监听一些事件、进行一些操作
+		 */
 		if (this.earlyApplicationListeners == null) {
 			this.earlyApplicationListeners = new LinkedHashSet<>(this.applicationListeners);
 		}
@@ -693,6 +808,9 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 
 		// Allow for the collection of early ApplicationEvents,
 		// to be published once the multicaster is available...
+		/**
+		 * 6. 用一个集合来存储所有需要监听的事件，后面用到了再具体看
+		 */
 		this.earlyApplicationEvents = new LinkedHashSet<>();
 	}
 
@@ -712,7 +830,16 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @see #getBeanFactory()
 	 */
 	protected ConfigurableListableBeanFactory obtainFreshBeanFactory() {
+		/**
+		 * 1. 刷新 beanFactory
+		 *    这里调用的是 GenericApplicationContext.refreshBeanFactory()
+		 */
 		refreshBeanFactory();
+
+		/**
+		 * 2. 获取 beanFactory
+		 *    这里调用的是 GenericApplicationContext.getBeanFactory()
+		 */
 		return getBeanFactory();
 	}
 
@@ -728,6 +855,11 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment()));
 
 		// Configure the bean factory with context callbacks.
+		/**
+		 * 这里还忽略了一些回调接口
+		 * 什么是回调：https://www.bilibili.com/video/BV1NT4y1r7gS/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+		 * 这里忽略的原因是 spring后面会手动处理这些回调接口、为了避免重复处理所以这里就设置为忽略
+		 */
 		beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this));
 		beanFactory.ignoreDependencyInterface(EnvironmentAware.class);
 		beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.class);
@@ -936,6 +1068,11 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	@SuppressWarnings("unchecked")
 	protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
 		// Initialize bootstrap executor for this context.
+		/**
+		 * 1. 首先注入一个名叫 bootstrapExecutor的 bean，这个实际上就是用来并发注入的线程池
+		 *    这个 bean的作用是后面用来后台注入的（比如说有个 bean和其他 bean是独立的、没有依赖关系的，那么可以把这个 bean设置为后台注入、因为他的注入过程和其他 bean没有任何关系）
+		 *    而这个 bootstrapExecutor就会在后台默默的起一个新线程去注入这个后台 bean
+		 */
 		if (beanFactory.containsBean(BOOTSTRAP_EXECUTOR_BEAN_NAME) &&
 				beanFactory.isTypeMatch(BOOTSTRAP_EXECUTOR_BEAN_NAME, Executor.class)) {
 			beanFactory.setBootstrapExecutor(
@@ -943,6 +1080,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		}
 
 		// Initialize conversion service for this context.
+		/**
+		 * 2. 注入一下类型转换器
+		 *    类型转换器的作用就是将 a类型转换成 b类型
+		 *    比如如果用 xml的方式来配置 bean，那么在 xml中 bean的属性都是字符串、但我们实际 bean的属性是各种 bool、int，这里就需要类型转换器
+		 *    spring会注入一下常用的类型转换器（比如字符串和几个常用的类型之间的转换器）、如果有需要我们也可以手动添加一些自定义的转换器
+		 */
 		if (beanFactory.containsBean(CONVERSION_SERVICE_BEAN_NAME) &&
 				beanFactory.isTypeMatch(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class)) {
 			beanFactory.setConversionService(
@@ -952,29 +1095,37 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		// Register a default embedded value resolver if no BeanFactoryPostProcessor
 		// (such as a PropertySourcesPlaceholderConfigurer bean) registered any before:
 		// at this point, primarily for resolution in annotation attribute values.
+		/**
+		 * 3. 这儿是添加了一个注入值解析器，比如说 ${}、#{}、@{}等
+		 */
 		if (!beanFactory.hasEmbeddedValueResolver()) {
 			beanFactory.addEmbeddedValueResolver(strVal -> getEnvironment().resolvePlaceholders(strVal));
 		}
 
 		// Call BeanFactoryInitializer beans early to allow for initializing specific other beans early.
+		/**
+		 * 4. 提前注入一些特殊类型的bean、比如 BeanFactoryInitializer、LoadTimeWeaverAware，并且设置一些参数
+		 *    其实这里的 beanFactory.getBean()就会进行注入的动作、但是我们不在这里看这个方法，去下面看
+		 */
 		String[] initializerNames = beanFactory.getBeanNamesForType(BeanFactoryInitializer.class, false, false);
 		for (String initializerName : initializerNames) {
 			beanFactory.getBean(initializerName, BeanFactoryInitializer.class).initialize(beanFactory);
 		}
-
 		// Initialize LoadTimeWeaverAware beans early to allow for registering their transformers early.
 		String[] weaverAwareNames = beanFactory.getBeanNamesForType(LoadTimeWeaverAware.class, false, false);
 		for (String weaverAwareName : weaverAwareNames) {
 			beanFactory.getBean(weaverAwareName, LoadTimeWeaverAware.class);
 		}
-
 		// Stop using the temporary ClassLoader for type matching.
 		beanFactory.setTempClassLoader(null);
-
 		// Allow for caching all bean definition metadata, not expecting further changes.
 		beanFactory.freezeConfiguration();
 
 		// Instantiate all remaining (non-lazy-init) singletons.
+		/**
+		 * 5. 前面都是一些准备工作，这儿是真正注入的过程
+		 *    调用的是 DefaultListableBeanFactory.preInstantiateSingletons()
+		 */
 		beanFactory.preInstantiateSingletons();
 	}
 

@@ -250,15 +250,31 @@ public class ClassPathBeanDefinitionScanner extends ClassPathScanningCandidateCo
 	 * @return number of beans registered
 	 */
 	public int scan(String... basePackages) {
+		/**
+		 * 1. 记录了一下扫描刚开始时的 Bean的数量（实际上是 BeanDefinition的数量）
+		 *    这里的 registry.getBeanDefinitionCount()实际上调用的是 DefaultListableBeanFactory.getBeanDefinitionCount()
+		 *    进到 DefaultListableBeanFactory里面看一下就知道了，这个方法返回的是一个 map.size()
+		 *    这个 map也就是用来存储 BeanDefinition的 map（很明显我们现在还没开始扫描、size肯定=0）
+		 */
 		int beanCountAtScanStart = this.registry.getBeanDefinitionCount();
 
+		/**
+		 * 2. 这里是主要干活的地儿，进去看看吧
+		 */
 		doScan(basePackages);
 
 		// Register annotation config processors, if necessary.
+		/**
+		 * 3. 下面是注册 annotation config processors，主要是 Spring Boot在编译时用来处理 @Configuration 注解的组件
+		 *    目前不知道是干啥用的，先跳过把
+		 */
 		if (this.includeAnnotationConfig) {
 			AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);
 		}
 
+		/**
+		 * 4. 最后返回了一下注册成功的 BeanDefinition的数量
+		 */
 		return (this.registry.getBeanDefinitionCount() - beanCountAtScanStart);
 	}
 
@@ -271,24 +287,77 @@ public class ClassPathBeanDefinitionScanner extends ClassPathScanningCandidateCo
 	 * @return set of beans registered if any for tooling registration purposes (never {@code null})
 	 */
 	protected Set<BeanDefinitionHolder> doScan(String... basePackages) {
+		/**
+		 * 跳过
+		 */
 		Assert.notEmpty(basePackages, "At least one base package must be specified");
+
+		/**
+		 * 1. 这里创建了一个 Set，用来装所有的 BeanDefinition，这个实际上就是结果集
+		 *    先思考第一个问题：为什么用 Set不用 List？
+		 *      · 这个问题其实还比较简单，因为 Set可以快速查找并去重，这样可以在注册过程中快速判断当前 BeanDefinition是否已经存在、同时避免重复注册
+		 *    第二个问题：但是为什么要使用 LinkedHashSet呢？
+		 *    	· 可以看看 LinkedHashSet和 HashSet有什么区别：https://cloud.tencent.com/developer/article/2348753
+		 *      · 其实最大的原因就是 LinkedHashSet是有序的
+		 *      · 思考一个问题 Todo：有序有什么用？后面会用到这个特性吗？
+		 */
 		Set<BeanDefinitionHolder> beanDefinitions = new LinkedHashSet<>();
+
+		/**
+		 * 2. 遍历传入的所有包路径
+		 */
 		for (String basePackage : basePackages) {
+			/**
+			 * 2.1 首先，找到所有的候选者
+			 *     什么叫候选者？可以看到 candidates是一个 Set<BeanDefinition>，所以这里的 candidates其实也是一些 BeanDefinition
+			 *     思考一个问题 Todo：那为什么叫候选者？为啥不直接注入这些 BeanDefinition？意思有一些不会被注入进来吗？
+			 */
 			Set<BeanDefinition> candidates = findCandidateComponents(basePackage);
+
+			/**
+			 * 2.2 遍历每个候选人，判断是不是要注册
+			 */
 			for (BeanDefinition candidate : candidates) {
+				/**
+				 * 2.3 获取作用域的元数据，实际上就是解析@Scope注解中的值、默认是单例的
+				 * 	   然后把作用域加到候选人上
+				 */
 				ScopeMetadata scopeMetadata = this.scopeMetadataResolver.resolveScopeMetadata(candidate);
 				candidate.setScope(scopeMetadata.getScopeName());
+
+				/**
+				 * 2.4 生成一下 bean的名字，调用的是 AnnotationBeanNameGenerator.generateBeanName()
+				 *     可以进去看一下，大概逻辑就是取@Component的 value、没有的话默认是类名首字母小写
+				 */
 				String beanName = this.beanNameGenerator.generateBeanName(candidate, this.registry);
+
+				/**
+				 * 2.5 判断当前的候选人是否是某几个特殊类型、进行特殊的逻辑处理
+				 * 	   主要是进行设置一些参数：比如懒加载、优先级之类的，不用深究
+				 */
 				if (candidate instanceof AbstractBeanDefinition abstractBeanDefinition) {
 					postProcessBeanDefinition(abstractBeanDefinition, beanName);
 				}
 				if (candidate instanceof AnnotatedBeanDefinition annotatedBeanDefinition) {
 					AnnotationConfigUtils.processCommonDefinitionAnnotations(annotatedBeanDefinition);
 				}
+
+				/**
+				 * 2.6 筛选并注册候选人
+				 *     上面说了、之所以叫“候选人”，是因为这些 BeanDefinition不一定会被注册进来，这里的 checkCandidate()就是筛选的方法
+				 */
 				if (checkCandidate(beanName, candidate)) {
+					/**
+					 * 2.7 这里创建了一个 BeanDefinitionHolder，进去看看这个类的几个属性就知道了
+					 *     其实主要是用来存 BeanDefinition + BeanName + Alias的
+					 */
 					BeanDefinitionHolder definitionHolder = new BeanDefinitionHolder(candidate, beanName);
 					definitionHolder =
 							AnnotationConfigUtils.applyScopedProxyMode(scopeMetadata, definitionHolder, this.registry);
+
+					/**
+					 * 2.8 将当前的候选人的 BeanDefinitionHolder加到结果集中，代表这个候选人是一个需要被注册的 bean
+					 */
 					beanDefinitions.add(definitionHolder);
 					registerBeanDefinition(definitionHolder, this.registry);
 				}
@@ -334,9 +403,16 @@ public class ClassPathBeanDefinitionScanner extends ClassPathScanningCandidateCo
 	 * has been found for the specified name
 	 */
 	protected boolean checkCandidate(String beanName, BeanDefinition beanDefinition) throws IllegalStateException {
+		/**
+		 * 1. 如果 registry中不存在这个 BeanDefinition，那么直接返回 true，表示可以注册
+		 */
 		if (!this.registry.containsBeanDefinition(beanName)) {
 			return true;
 		}
+		/**
+		 * 1.1 上面的判断逻辑走到这儿之后，其实说明这个候选人已经被注册进来了
+		 *     下面的逻辑主要是为了判断当前候选人和 registry中已经存在的 BeanDefinition 是否冲突、不深究
+		 */
 
 		BeanDefinition existingDef = this.registry.getBeanDefinition(beanName);
 		BeanDefinition originatingDef = existingDef.getOriginatingBeanDefinition();

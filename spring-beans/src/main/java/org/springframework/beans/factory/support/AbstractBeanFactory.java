@@ -196,6 +196,15 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 
 	@Override
 	public Object getBean(String name) throws BeansException {
+		/**
+		 * 1. 可以看到这个 doGetBean()有很多个参数，一个一个解释一下
+		 *      · name就是需要获取的 bean的 beanName
+		 *      · requiredType是需要获取的 bean的类型
+		 *      · args是构造 bean时的一些参数
+		 *      · typeCheckOnly指的是是不是只检查类型，如果是的话，那么就只检查类型、不创建实例
+		 *        · 所以我们这个 doGetBean()其实有两个功能，一个是创建 bean、一个是类型检查
+		 *        · 具体这个函数是执行什么功能、就由这个 typeCheckOnly参数控制
+		 */
 		return doGetBean(name, null, null, false);
 	}
 
@@ -240,10 +249,35 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
 			throws BeansException {
 
+		/**
+		 * 1. 首先处理一下 beanName，为什么需要处理呢？
+		 *      · 第一点，是怕传过来的 beanName只是个别名、不是真正的 beanName，所以这里需要转换成真正的 beanName
+		 *      · 第二点，怕你的 beanName不规范
+		 *          · 前面说了，FactoryBean会在 beanName前面添加一个 &前缀，spring就会认为所有 &开头的都是 FactoryBean
+		 *          · 所以这里需要处理一下 beanName、如果你的 beanName前面有 &、spring就会把这些符号全删掉、直到剩下有效的 beanName
+		 *          · 举例：你想创建一个叫 "&&&adong"的 bean，最后注入的实际上是一个叫 "adong"的 bean，前面的 &都被删了
+		 */
 		String beanName = transformedBeanName(name);
+
+		/**
+		 * 2. 这个 beanInstance就是我们实际要实例化的 bean了
+		 *    在阅读下面的代码之前，我建议先学习一下什么是 spring的三级缓存：https://www.bilibili.com/video/BV1AJ4m157MU/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+		 *      · 每一级缓存实际上就是一个 map、每个 map存储的都是处于不同时期的 bean
+		 *      · 三级缓存 singletonObjects：存储的是完整的 bean、这里的 bean就是我们 ioc容器中最终注入的那个
+		 *      · 二级缓存 earlySingletonObjects：存储的是早期暴露的 bean、这里的 bean主要是用来给其他 bean进行依赖注入用的
+		 *      · 一级缓存 singletonFactories：存储的是创建 bean 的工厂方法、通过这个工厂方法可以创建 bean
+		 *        · 这里的工厂对象可能返回的是原对象、也可能返回的是代理对象
+		 *        · 具体返回哪个对象我们在下面会看到
+		 *      · 还有一个 creating set叫 alreadyCreated：用来存储当前正在被创建的 beanName
+		 *      · 还有一个 alreadyCreated：用来存储创建好的 beanName
+		 */
 		Object beanInstance;
 
 		// Eagerly check singleton cache for manually registered singletons.
+		/**
+		 * 3. 首先我们尝试在缓存中获取这个 bean
+		 *    这里获取的是会从三级、二级、一级缓存中逐个去获取这个 bean
+		 */
 		Object sharedInstance = getSingleton(beanName);
 		if (sharedInstance != null && args == null) {
 			if (logger.isTraceEnabled()) {
@@ -261,18 +295,41 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		else {
 			// Fail if we're already creating this bean instance:
 			// We're assumably within a circular reference.
+			/**
+			 * 4. 从缓存中获取不到的时候、说明是第一次实例化这个 bean
+			 *    还记得我们前面假设的场景吗：
+			 *      · 此时 A正在第一次被实例化、B还没有开始实例化，记住这个前提、接着往下走
+			 *    这里是要判断这个 bean是不是正在被实例化了，如果 bean已经在实例化了、就说明我们当前这个线程正在重复初始化，需要报错
+			 *      · 做判断就是因为我们之所以走到这儿就是因为 isSingletonCurrentlyInCreation(a)=false
+			 *      · 所以这里要再多判断一下、以免出现问题
+			 */
 			if (isPrototypeCurrentlyInCreation(beanName)) {
 				throw new BeanCurrentlyInCreationException(beanName);
 			}
 
 			// Check if bean definition exists in this factory.
+			/**
+			 * 5. 获取父容器，spring的 ioc容器是支持父子关系的，比如 spring和 springMVC就具有父子关系
+			 *    为什么需要父子关系：https://www.bilibili.com/video/BV1Yp42117CM/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+			 *    这里会判断有没有父容器、如果有并且当前这个 bean的 BeanDefinition不在当前这个子容器中，那我肯定要去父容器里面寻找
+			 */
 			BeanFactory parentBeanFactory = getParentBeanFactory();
 			if (parentBeanFactory != null && !containsBeanDefinition(beanName)) {
 				// Not found -> check parent.
+				/**
+				 * 5.1 这里又把 beanName给转换回去（就是前面去掉别名、去掉 &的过程反过来）
+				 */
 				String nameToLookup = originalBeanName(name);
 				if (parentBeanFactory instanceof AbstractBeanFactory abf) {
+					/**
+					 * 5.2 然后去父容器中获取这个 bean（获取的过程实际上就包含了实例化的过程）
+					 *     这里点进去以后你会惊奇的发现、又回到了当前这个方法，说明还没走到真正的实例化的逻辑、我们接着往下看
+					 */
 					return abf.doGetBean(nameToLookup, requiredType, args, typeCheckOnly);
 				}
+				/**
+				 * 5.3 下面几个都不会走进去，因为我们只传了一个 beanName进来，所以跳过即可
+				 */
 				else if (args != null) {
 					// Delegation to parent with explicit args.
 					return (T) parentBeanFactory.getBean(nameToLookup, args);
@@ -286,22 +343,52 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 				}
 			}
 
+			/**
+			 * 6. 这里我们传进来的 typeCheckOnly=false，所以是会走进这个 if里面的
+			 *     这个 markBeanAsCreated()的方法实际上就是在标识我们当前这个 bean已经创建完成了
+			 *     也就是向三级缓存中的 alreadyCreated添加这个 beanName
+			 */
 			if (!typeCheckOnly) {
 				markBeanAsCreated(beanName);
 			}
 
+			/**
+			 * 跳过跳过
+			 */
 			StartupStep beanCreation = this.applicationStartup.start("spring.beans.instantiate")
 					.tag("beanName", name);
 			try {
+				/**
+				 * 跳过跳过
+				 */
 				if (requiredType != null) {
 					beanCreation.tag("beanType", requiredType::toString);
 				}
+
+				/**
+				 * 7. 获取 BeanDefinition、开始实例化 bean
+				 *    注意，这里的 getMergedLocalBeanDefinition()会在当前容器中获取 BeanDefinition
+				 *    还记得我们前面第5步获取了父容器吗？这里我们其实会不断递归、直到找到这个 BeanDefinition所在的容器、然后在当前容器中对这个 bean进行实例化并且注入到当前容器中
+				 */
 				RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
+
+				/**
+				 * 7.1 检查一下 BeanDefinition是不是合法（主要就是限制抽象类不允许注入）
+				 */
 				checkMergedBeanDefinition(mbd, beanName, args);
 
 				// Guarantee initialization of beans that the current bean depends on.
+				/**
+				 * 8. 获取一下当前 bean的 dependsOn属性
+				 *    注意：这里的 dependsOn属性并不是@Autowired的那些属性值，而是我们在 xml中的 dependsOn属性中指定的那些
+				 *    @Autowired 自动注入的属性值并不是在这里处理的
+				 *    现在 spring-boot基本都是用注解的方式注入的、所以不用关心这个 dependsOn != null的逻辑、可以跳过
+				 */
 				String[] dependsOn = mbd.getDependsOn();
 				if (dependsOn != null) {
+					/**
+					 * 8.1 处理每个 dependsOn的 bean，其实就是要先把这些 dependsOn的 bean都实例化、才能实例化我们当前的 bean
+					 */
 					for (String dep : dependsOn) {
 						if (isDependent(beanName, dep)) {
 							throw new BeanCreationException(mbd.getResourceDescription(), beanName,
@@ -309,6 +396,9 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 						}
 						registerDependentBean(dep, beanName);
 						try {
+							/**
+							 * 8.2 兜兜转转又递归调用了这个方法
+							 */
 							getBean(dep);
 						}
 						catch (NoSuchBeanDefinitionException ex) {
@@ -330,8 +420,19 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 				}
 
 				// Create bean instance.
+				/**
+				 * 9. 判断当前 bean是不是单例的
+				 */
 				if (mbd.isSingleton()) {
+					/**
+					 * 9.1 这里调用了 getSingleton()，这个方法是真正创建单例 bean的地方
+					 *     这里的第二个参数是一个 lambda表达式，一会进入到 getSingleton()里面以后肯定会调用这个 lambda表达式，所以我们先看一下这个 lambda表达式的逻辑
+					 */
 					sharedInstance = getSingleton(beanName, () -> {
+						/**
+						 * 9.2 核心逻辑就是这个 createBean()+异常后销毁bean的逻辑
+						 *     这里我们先不看这个 createBean()的逻辑，先去 getSingleton()里面看看
+						 */
 						try {
 							return createBean(beanName, mbd, args);
 						}
@@ -345,7 +446,9 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					});
 					beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
 				}
-
+				/**
+				 * 10. 后面的逻辑都一样的、只不过是创建其他作用域下的 bean的过程，实现上没啥区别，可以不用看了
+				 */
 				else if (mbd.isPrototype()) {
 					// It's a prototype -> create a new instance.
 					Object prototypeInstance = null;
@@ -1153,16 +1256,32 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 
 	@Override
 	public boolean isFactoryBean(String name) throws NoSuchBeanDefinitionException {
+		/**
+		 * 1. 先转换一下 bean的名字（为了避免有别名的情况）
+		 */
 		String beanName = transformedBeanName(name);
+
+		/**
+		 * 2. 先从缓存中获取这个 bean、看这个 bean是否已经被实例化过了
+		 *    如果已经实例化了、那么直接返回这个 bean是不是 instanceof FactoryBean
+		 */
 		Object beanInstance = getSingleton(beanName, false);
 		if (beanInstance != null) {
 			return (beanInstance instanceof FactoryBean);
 		}
+
 		// No singleton instance found -> check bean definition.
+		/**
+		 * 3. 如果这个 bean在当前容器目前还没被实例化、那么就看父容器有没有这个 bean、然后在父容器中递归判断是不是 FactoryBean
+		 */
 		if (!containsBeanDefinition(beanName) && getParentBeanFactory() instanceof ConfigurableBeanFactory cbf) {
 			// No bean definition found in this factory -> delegate to parent.
 			return cbf.isFactoryBean(name);
 		}
+
+		/**
+		 * 4. 主要还是走下面这个方法
+		 */
 		return isFactoryBean(beanName, getMergedLocalBeanDefinition(beanName));
 	}
 
@@ -1539,9 +1658,18 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			throws CannotLoadBeanClassException {
 
 		try {
+			/**
+			 * 1. 如果 BeanDefinition中有这个 bean的 class类、直接返回即可
+			 *    我们自己注入的 bean在 BeanDefinition中都会有这个 bean的 class
+			 */
 			if (mbd.hasBeanClass()) {
 				return mbd.getBeanClass();
 			}
+
+			/**
+			 * 2. 对于 spring自己创建的一些 BeanDefinition、可能不会带有 class
+			 *    所以对于这些特殊类型的 BeanDefinition需要特殊处理一下（但其实我们不用关心这个处理的逻辑）
+			 */
 			Class<?> beanClass = doResolveBeanClass(mbd, typesToMatch);
 			if (mbd.hasBeanClass()) {
 				mbd.prepareMethodOverrides();
@@ -1678,6 +1806,9 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	 * @param mbd the corresponding bean definition
 	 */
 	protected boolean isFactoryBean(String beanName, RootBeanDefinition mbd) {
+		/**
+		 * 这个方法就很简单了、直接判断 BeanDefinition有没有实现 FactoryBean接口即可
+		 */
 		Boolean result = mbd.isFactoryBean;
 		if (result == null) {
 			Class<?> beanType = predictBeanType(beanName, mbd, FactoryBean.class);

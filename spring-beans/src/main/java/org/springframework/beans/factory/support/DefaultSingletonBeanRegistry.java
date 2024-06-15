@@ -167,8 +167,19 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	 */
 	protected void addSingletonFactory(String beanName, ObjectFactory<?> singletonFactory) {
 		Assert.notNull(singletonFactory, "Singleton factory must not be null");
+		/**
+		 * 这个是一级缓存
+		 */
 		this.singletonFactories.put(beanName, singletonFactory);
+
+		/**
+		 * 这个是二级缓存
+		 */
 		this.earlySingletonObjects.remove(beanName);
+
+		/**
+		 * 这个用来存储已经完整注入的 beanName
+		 */
 		this.registeredSingletons.add(beanName);
 	}
 
@@ -180,6 +191,9 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	@Override
 	@Nullable
 	public Object getSingleton(String beanName) {
+		/**
+		 * 记住这个 allowEarlyReference=true
+		 */
 		return getSingleton(beanName, true);
 	}
 
@@ -194,9 +208,35 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	@Nullable
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 		// Quick check for existing instance without full singleton lock.
+		/**
+		 * 1. 首先从三级缓存中获取完整的 bean
+		 */
 		Object singletonObject = this.singletonObjects.get(beanName);
+
+		/**
+		 * 1.1 如果完整 bean不存在并且这个 bean正在创建中，那么我们可以尝试从二级缓存中拿到这个 bean
+		 *     这里需要特别注意的是：isSingletonCurrentlyInCreation(beanName)这个判断
+		 *       · 什么时候这个判断=true：
+		 *       · 只有当实例化 A时需要实例化 B，此时 A的实例化流程会停住、转而进行执行 B的实例化流程
+		 *         · 此时 A就会被标记为是 isSingletonCurrentlyInCreation
+		 *       · 然后走到实例化 B的流程中、此时的 B并不是 isSingletonCurrentlyInCreation的
+		 *     顺着上面这个逻辑，我们来假设一种场景：
+		 *       · 假设 A依赖 B，B又依赖 A
+		 *       · 此时先实例化 A，走到当前流程了、这里的 singletonObject==null 但是 isSingletonCurrentlyInCreation(a)=false
+		 *       · 所以这个 if逻辑走不进去、这个函数会直接返回一个 null
+		 *       · 所以我们现在最好退回去、看看这个函数返回 null以后会走什么逻辑
+		 *       · 让我们退回到 AbstractBeanFactory的 295行去看看
+		 */
 		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+			/**
+			 * 2. 尝试从二级缓存中拿到早期暴露的这个 bean
+			 */
 			singletonObject = this.earlySingletonObjects.get(beanName);
+
+			/**
+			 * 2.1 如果二级缓存中也不存在、并且允许早期暴露（allowEarlyReference=true）
+			 *     那么我们就会尝试去三级缓存中获取这个 bean的对象工厂
+			 */
 			if (singletonObject == null && allowEarlyReference) {
 				if (!this.singletonLock.tryLock()) {
 					// Avoid early singleton inference outside of original creation thread.
@@ -204,12 +244,26 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 				}
 				try {
 					// Consistent creation of early reference within full singleton lock.
+					/**
+					 * 2.2 这里有个双重检查（双重检查的作用可以参考单例设计模式）
+					 *     单例模式：https://www.bilibili.com/video/BV1af4y1y7sS/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+					 */
 					singletonObject = this.singletonObjects.get(beanName);
 					if (singletonObject == null) {
 						singletonObject = this.earlySingletonObjects.get(beanName);
 						if (singletonObject == null) {
+							/**
+							 * 2.3 双重检查进来了说明二级缓存中这个 bean确实不存在、那么我就可以考虑从一级缓存中获取其对象工厂
+							 */
 							ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
 							if (singletonFactory != null) {
+								/**
+								 * 2.4 其对象工厂不为空、那么就用该对象工厂实例化一个 bean
+								 *     并且将这个 bean的对象工厂从一级缓存中 remove走：
+								 *       · 如果 remove成功了，说明当前 bean的完整对象还没有被构建出来、那么就将 bean加入到二级缓存中
+								 *       · 如果没 remove成功，说明当前 bean的完整对象已经被构建出来了、那么直接返回三级缓存中的完整 bean即可
+								 *     这里需要考虑 remove是否成功主要是因为前面只在二级缓存那一层做了双重检查、而没有在三级缓存那一层做
+								 */
 								singletonObject = singletonFactory.getObject();
 								// Singleton could have been added or removed in the meantime.
 								if (this.singletonFactories.remove(beanName) != null) {
@@ -242,11 +296,22 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
 		Assert.notNull(beanName, "Bean name must not be null");
 
+		/**
+		 * 1. 这个 acquireLock一直是 true，可能是后面留着拓展用吧
+		 *    然后这里拿了个单例锁，这里会发现、所有单例 bean的创建过程都是用同一把锁的，也就是这个 this.singletonLock
+		 *    并没有根据 beanName去获取不同的锁，意思是走到这一步了、就必须只能单线程执行、避免实例化的过程出现错乱
+		 */
 		boolean acquireLock = isCurrentThreadAllowedToHoldSingletonLock();
 		boolean locked = (acquireLock && this.singletonLock.tryLock());
 		try {
+			/**
+			 * 2. 首先还是从一级缓存中获取完整 bean
+			 */
 			Object singletonObject = this.singletonObjects.get(beanName);
 			if (singletonObject == null) {
+				/**
+				 * 2.1 又是拿锁的逻辑
+				 */
 				if (acquireLock) {
 					if (locked) {
 						this.singletonCreationThread = Thread.currentThread();
@@ -266,8 +331,13 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 						}
 						else {
 							// Singleton lock currently held by some other registration method -> wait.
+							/**
+							 * 2.2 这里又是一个二次拿锁、具体为什么要拿两次锁可以参考单例模式的双重检查锁的逻辑
+							 *     单例模式：https://www.bilibili.com/video/BV1af4y1y7sS/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
+							 */
 							this.singletonLock.lock();
 							locked = true;
+
 							// Singleton object might have possibly appeared in the meantime.
 							singletonObject = this.singletonObjects.get(beanName);
 							if (singletonObject != null) {
@@ -277,6 +347,10 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 					}
 				}
 
+				/**
+				 * 2.3 如果当前 bean正在被销毁、那就要报错
+				 *     可能是 ioc容器启动失败了、需要销毁所有的 bean，这时候你正在创建的 bean也别创建了
+				 */
 				if (this.singletonsCurrentlyInDestruction) {
 					throw new BeanCreationNotAllowedException(beanName,
 							"Singleton bean creation not allowed while singletons of this factory are in destruction " +
@@ -285,6 +359,11 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 				if (logger.isDebugEnabled()) {
 					logger.debug("Creating shared instance of singleton bean '" + beanName + "'");
 				}
+
+				/**
+				 * 2.4 这里又逻辑判断了一下是不是真的能去创建这个 bean
+				 *     主要就是判断这个 bean是不是正在被创建
+				 */
 				beforeSingletonCreation(beanName);
 				boolean newSingleton = false;
 				boolean recordSuppressedExceptions = (locked && this.suppressedExceptions == null);
@@ -292,7 +371,12 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 					this.suppressedExceptions = new LinkedHashSet<>();
 				}
 				this.singletonCreationThread = Thread.currentThread();
+
 				try {
+					/**
+					 * 3. 这里终于要开始创建这个 bean了，还记得这个 singletonFactory吗？这是我们传进来的那个 lambada表达式
+					 *    所以我们现在进入到 AbstractAutowireCapableBeanFactory.createBean()去看看(第 486行)
+					 */
 					singletonObject = singletonFactory.getObject();
 					newSingleton = true;
 				}
@@ -313,12 +397,20 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 					throw ex;
 				}
 				finally {
+					/**
+					 * 4. bean创建完成以后、做一点收尾工作
+					 *    将当前线程置为 null、并且将当前 bean从 singletonsCurrentlyInCreation中 remove、代表这个 bean已经不是正在被创建中的状态了
+					 */
 					this.singletonCreationThread = null;
 					if (recordSuppressedExceptions) {
 						this.suppressedExceptions = null;
 					}
 					afterSingletonCreation(beanName);
 				}
+
+				/**
+				 * 5. 这里对三级缓存进行了一些操作、确保我们后面用到的三级缓存不会有问题
+				 */
 				if (newSingleton) {
 					addSingleton(beanName, singletonObject);
 				}
