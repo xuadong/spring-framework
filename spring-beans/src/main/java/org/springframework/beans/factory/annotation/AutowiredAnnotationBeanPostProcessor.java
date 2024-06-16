@@ -534,7 +534,8 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 			 *    这里分为两步：
 			 *      · 首先找到需要注入的属性、以及需要注入进去的 value（这里的第一步实际上就是 getBean()的过程）
 			 *      · 然后通过反射进行注入
-			 *    同时，我们找到了这个早期对象以后我们还会将这个早期对象加入到二级缓存中去、方便后期使用
+			 *      · 此外，我们找到了这个早期对象以后我们还会将这个早期对象加入到二级缓存中去、方便后期使用
+			 *    这里还要注意的是、如果当前的依赖被@Autowired和@Lazy同时标注了、那么这个依赖不会马上被注入、而是会延时注入
 			 *    （但是这个代码太深了，里面实在看不懂，建议大家结合 debug自己看一下，这一块太深了）
 			 */
 			metadata.inject(bean, beanName, pvs);

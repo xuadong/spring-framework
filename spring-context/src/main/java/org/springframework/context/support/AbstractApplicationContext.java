@@ -1124,7 +1124,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		// Instantiate all remaining (non-lazy-init) singletons.
 		/**
 		 * 5. 前面都是一些准备工作，这儿是真正注入的过程
-		 *    调用的是 DefaultListableBeanFactory.preInstantiateSingletons()
+		 *    调用的是 DefaultListableBeanFactory#preInstantiateSingletons()
 		 */
 		beanFactory.preInstantiateSingletons();
 	}

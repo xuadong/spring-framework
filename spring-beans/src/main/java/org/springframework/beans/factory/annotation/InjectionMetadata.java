@@ -138,11 +138,20 @@ public class InjectionMetadata {
 	}
 
 	public void inject(Object target, @Nullable String beanName, @Nullable PropertyValues pvs) throws Throwable {
+		/**
+		 * 我这里大概写一下我对这个逻辑的理解，不一定正确、大家看不懂就别看了
+		 */
+
+		// 获取已校验的注入元素
 		Collection<InjectedElement> checkedElements = this.checkedElements;
+
+		// 如果没有已校验的元素，则使用所有注入元素
 		Collection<InjectedElement> elementsToIterate =
 				(checkedElements != null ? checkedElements : this.injectedElements);
 		if (!elementsToIterate.isEmpty()) {
+			// 遍历所有待注入的元素（字段或方法）
 			for (InjectedElement element : elementsToIterate) {
+				// 执行实际的注入操作
 				element.inject(target, beanName, pvs);
 			}
 		}

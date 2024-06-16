@@ -7,4 +7,4 @@
 2. 我们先做一些准备工作
    1. 先下载 gradle并配置镜像
    2. gradle版本是 8.7的版本、jdk是 17
-3. 然后我们从 com.adong.study.Main 类开始看即可
+3. 然后我们从 com.adong.test.AdongTest 类开始看即可

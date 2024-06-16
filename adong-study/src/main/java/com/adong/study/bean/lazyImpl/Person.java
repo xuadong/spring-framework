@@ -1,8 +1,7 @@
-package com.adong.study.bean.lazytime;
+package com.adong.study.bean.lazyImpl;
 
 import org.springframework.stereotype.Component;
 
 @Component
 public class Person {
-	public String name;
 }

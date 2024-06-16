@@ -385,7 +385,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 				try {
 					/**
 					 * 3. 这里终于要开始创建这个 bean了，还记得这个 singletonFactory吗？这是我们传进来的那个 lambada表达式
-					 *    所以我们现在进入到 AbstractAutowireCapableBeanFactory.createBean()去看看(第 486行)
+					 *    所以我们现在进入到 AbstractAutowireCapableBeanFactory#486
 					 */
 					singletonObject = singletonFactory.getObject();
 					newSingleton = true;

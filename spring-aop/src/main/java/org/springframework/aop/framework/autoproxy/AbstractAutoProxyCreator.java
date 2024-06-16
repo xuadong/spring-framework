@@ -263,8 +263,15 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 
 	@Override
 	public Object getEarlyBeanReference(Object bean, String beanName) {
+		/**
+		 * 1. 这里首先要判断当前 bean是否已经被代理过了、如果被代理了就不要重复代理了
+		 */
 		Object cacheKey = getCacheKey(bean.getClass(), beanName);
 		this.earlyBeanReferences.put(cacheKey, bean);
+
+		/**
+		 * 2. 然后这里是代理的具体逻辑
+		 */
 		return wrapIfNecessary(bean, beanName, cacheKey);
 	}
 
@@ -355,6 +362,11 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 	 * @return a proxy wrapping the bean, or the raw bean instance as-is
 	 */
 	protected Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+		/**
+		 * 1. 这里主要是用来跳过一些特殊的 bean、这些 bean都是不用代理的
+		 *      · 比如 spring内置的 bean、肯定不用代理
+		 *      · 或者一些 ".ORIGINAL"结尾的 bean、这一类 bean我也不知道是干啥的、应该是一些特殊的 bean
+		 */
 		if (StringUtils.hasLength(beanName) && this.targetSourcedBeans.contains(beanName)) {
 			return bean;
 		}
@@ -367,6 +379,18 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 		}
 
 		// Create proxy if we have advice.
+		/**
+		 * 2. 找到当前 bean所有的切面（一个切面是一个对象）
+		 *    比如说 before、after、around这种切面
+		 *    如果有切面的话、那么就需要代理，那么这个方法就会返回代理对象而不是原对象
+		 *    具体创建代理的逻辑就不看了，藏的很深，总结一下就是：
+		 *      · 一共有两种代理方式，一种是 jdk代理，一种是 cglib代理
+		 *      · 如果指定了代理方式、那么就用指定的代理方式去生成代理
+		 *      · 如果没指定的话、就会根据当前这个 bean的类型去看使用哪种方式生成代理
+		 *      · 如果当前的 bean只要实现了接口的话、那么就会用 jdk代理（不论实现一个还是多个接口）
+		 *      · 不然就使用 cglib进行代理
+		 *    具体有关 aop代理的总结、可以看我写的第四个测试用例
+		 */
 		Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, null);
 		if (specificInterceptors != DO_NOT_PROXY) {
 			this.advisedBeans.put(cacheKey, Boolean.TRUE);

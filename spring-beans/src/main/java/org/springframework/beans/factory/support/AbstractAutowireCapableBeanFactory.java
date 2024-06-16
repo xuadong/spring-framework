@@ -527,6 +527,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			 * 3. 设置一个时机、生成并返回 bean的代理对象、而不是原始 bean
 			 *    这里就涉及 aop的内容，可以先了解一下什么是代理：https://www.bilibili.com/video/BV15V411z7nD/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
 			 *    但是这个逻辑需要通过额外设置才能走进来，所以我们先不看这个逻辑、接着往下走
+			 *      · 这个方法主要功能就是说如果用户人为的添加一个生成代理对象的方法
+			 *      · 那么此时就会直接生成一个代理对象、不会走 spring默认的实例化流程
+			 *      · 这是可能生成代理对象的第一个地方
 			 */
 			Object bean = resolveBeforeInstantiation(beanName, mbdToUse);
 			if (bean != null) {
@@ -633,7 +636,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		 *        · 在这个方法里面会先准备好当前的 bean中需要注入哪些属性、方便后面我们可以直接执行自动注入的动作
 		 *      · ApplicationListenerDetector：
 		 *        · 这个是用标记哪些 bean已经注入完成的，这个后置处理器的 postProcessMergedBeanDefinition()很简单、可以进去看一下
-		 *    所以我们现在就要去看看 AutowiredAnnotationBeanPostProcessor.postProcessMergedBeanDefinition()的逻辑、来看看这里为自动注入做了哪些准备
+		 *    所以我们现在就要去看看 AutowiredAnnotationBeanPostProcessor#postProcessMergedBeanDefinition()的逻辑、来看看这里为自动注入做了哪些准备
 		 */
 		synchronized (mbd.postProcessingLock) {
 			if (!mbd.postProcessed) {
@@ -678,7 +681,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			 *     同时这里返回的可能是原对象也可能是代理对象、主要取决于我们传入的 bean是什么对象
 			 *       · 当一个类被 aop的时候、那么这里的 getEarlyBeanReference()就会返回代理对象，其他时候就会返回原对象
 			 *       · 其实 aop的原理就是通过生成一个代理对象、来对原对象进行加强
-			 *       · 这是可能会生成 aop代理对象的第一个地方
+			 *       · getEarlyBeanReference()是可能会生成代理对象的第二个地方
 			 */
 			addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
 		}
@@ -719,7 +722,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			/**
 			 * 4.2 初始化，经过初始化后的 exposedObject可能是原对象、也可能是代理对象
 			 *     aop生成代理对象的过程就是在这里实现的（或者说，aop就是通过一个特殊的 BeanPostProcessor实现的）
-			 *     这是可能会生成 aop代理对象的第二个地方
+			 *     这是可能会生成 aop代理对象的第三个地方
 			 */
 			exposedObject = initializeBean(beanName, exposedObject, mbd);
 		}
@@ -733,12 +736,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		}
 
 		/**
-		 * 5.
+		 * 5. 接下来做了一个逻辑判断、判断当前 bean的所有依赖是否都已经注入进来了、如果没有全部注入的话就要报错
 		 */
 		if (earlySingletonExposure) {
-			/**
-			 * 5.1 首先通过三级缓存来获取当前的 bean
-			 */
 			Object earlySingletonReference = getSingleton(beanName, false);
 			if (earlySingletonReference != null) {
 				if (exposedObject == bean) {
@@ -1078,6 +1078,13 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 	 * @return the object to expose as bean reference
 	 */
 	protected Object getEarlyBeanReference(String beanName, RootBeanDefinition mbd, Object bean) {
+		/**
+		 * 1. 这里的逻辑主要判断当前 bean是否是用户注入的、并且有没有实现了 SmartInstantiationAwareBeanPostProcessor接口的后置处理器
+		 *    如果有的话、就会执行他的 getEarlyBeanReference()
+		 *    当你的项目中存在某个类上加了 @EnableAspectJAutoProxy时、spring会注入了一个 AnnotationAwareAspectJAutoProxyCreator的后置处理器
+		 *      · 但是你进到 AnnotationAwareAspectJAutoProxyCreator#getEarlyBeanReference()方法是没有的
+		 *      · 这个方法的实现逻辑在他的父类、 AbstractAutoProxyCreator#getEarlyBeanReference()中
+		 */
 		Object exposedObject = bean;
 		if (!mbd.isSynthetic() && hasInstantiationAwareBeanPostProcessors()) {
 			for (SmartInstantiationAwareBeanPostProcessor bp : getBeanPostProcessorCache().smartInstantiationAware) {
@@ -1338,7 +1345,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		 *      · 这个 bean的 determineCandidateConstructors()会找到一些特殊的构造器返回回来
 		 *      · 什么叫特殊的构造器？
 		 *        · 实际上就是我们加了 @Autowired的构造器
-		 *    如果你是从第三个测试用例进来看到这里、那么可以进到 AutowiredAnnotationBeanPostProcessor.determineCandidateConstructors()看看
+		 *    如果你是从第三个测试用例进来看到这里、那么可以进到 AutowiredAnnotationBeanPostProcessor#determineCandidateConstructors()看看
 		 *    如果是第一个测试用例那就先跳过这一部分
 		 */
 		Constructor<?>[] ctors = determineConstructorsFromBeanPostProcessors(beanClass, beanName);
@@ -1601,7 +1608,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		 * 3.2 其实是在这里自动注入的所有的属性
 		 *     spring会提前注入一个 AutowiredAnnotationBeanPostProcessor类型的后置处理器
 		 *     然后就是通过这个后置处理器的 postProcessProperties()去实现自动注入的过程
-		 *     所以我们可以直接跳到 AutowiredAnnotationBeanPostProcessor.postProcessProperties()去看
+		 *     所以我们可以直接跳到 AutowiredAnnotationBeanPostProcessor#postProcessProperties()去看
 		 */
 		if (hasInstantiationAwareBeanPostProcessors()) {
 			if (pvs == null) {
@@ -1982,9 +1989,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			 * 2.1 如果是非合成 bean、那么就需要调用所有的 bean的后置处理器
 			 *     用户创建的 bean很明显就需要进行一些后置处理（后置处理器就是用来处理用户创建的这些 bean的）
 			 *     当前的时机是 bean实例化后、初始化前，所以需要调用后置处理器的 postProcessBeforeInitialization()
-			 *     spring已经添加了一个后置处理器：AnnotationAwareAspectJAutoProxyCreator
-			 *       · AnnotationAwareAspectJAutoProxyCreator.postProcessBeforeInitialization()实际上就是在创建 aop代理对象
-			 *       · Todo：具体看一下创建的过程以及和三级缓存的关系？
+			 *     当你的项目中存在某个类上加了 @EnableAspectJAutoProxy时、spring会注入了一个 AnnotationAwareAspectJAutoProxyCreator的后置处理器
+			 *       · 但是你进到 AnnotationAwareAspectJAutoProxyCreator#getEarlyBeanReference()方法是没有的
+			 *       · 这个方法的实现逻辑在他的父类、 AbstractAutoProxyCreator#getEarlyBeanReference()中
 			 */
 			wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
 		}

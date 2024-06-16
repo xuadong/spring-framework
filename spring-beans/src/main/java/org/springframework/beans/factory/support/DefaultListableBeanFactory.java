@@ -1056,7 +1056,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 				 *        · 可以看看我写的第二个测试用例、自己 debug一下就能证实
 				 *      · 第二点，只有作用域是单例的 bean才会在 ioc容器的时候实例化（其他作用域的时候基本是需要了就实例化一个、每次实例化的不是同一个 bean）
 				 *    这里的 preInstantiateSingleton()就是根据 beanName和 BeanDefinition来实例化一个 bean
-				 *    所以进去 preInstantiateSingleton(beanName, mbd)看看
+				 *    所以进去 preInstantiateSingleton()看看
 				 */
 				if (!mbd.isAbstract() && mbd.isSingleton()) {
 					CompletableFuture<?> future = preInstantiateSingleton(beanName, mbd);
@@ -1141,7 +1141,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		/**
 		 * 2. 如果不是后台注入、并且不是懒加载的 bean，就直接实例化这个 bean
 		 *    思考一个问题：懒加载的 bean是什么是够实例化的呢？我们可以通过我写的第四个测试用例看一看这个问题、现在我们先接着往下看
-		 *    继续进入 instantiateSingleton(beanName)看看
+		 *    继续进入 instantiateSingleton()看看
 		 */
 		if (!mbd.isLazyInit()) {
 			instantiateSingleton(beanName);
