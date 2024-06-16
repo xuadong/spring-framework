@@ -599,6 +599,15 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		/**
 		 * 1.2 接下来创建这个 BeanWrapper
+		 *     这里需要注意的是、在此时我们还没有操作到三级缓存相关的东西
+		 *     如果你是通过第一个测试用例走到这里的话、不用关心我接下来说的、接着看就可以（进到这个方法里面看看）
+		 *     如果你是通过第三个关于构造器注入的测试用例走到这里的话，可以看看：
+		 *       · 比如说 person通过构造器注入 cat，此时我们在创建 person、并走到这一步
+		 *       · 此时这个 createBeanInstance()里面就会通过构造器去找到所有需要@Autowire的对象实例
+		 *       · 意思就是我们在这一步就会去创建 person中需要的那个 cat实例
+		 *       · 发现没有，我们还没将当前 person的对象工厂加入到三级缓存中、就递归去创建 cat实例了
+		 *       · 假设 cat中需要注入 person、此时出现了循环依赖问题，但是三级缓存中又没有 person的对象工厂、是不是就没法解决这个循环依赖问题了？
+		 *     具体我们可以进到这个方法里面看看
 		 */
 		if (instanceWrapper == null) {
 			instanceWrapper = createBeanInstance(beanName, mbd, args);
@@ -669,6 +678,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			 *     同时这里返回的可能是原对象也可能是代理对象、主要取决于我们传入的 bean是什么对象
 			 *       · 当一个类被 aop的时候、那么这里的 getEarlyBeanReference()就会返回代理对象，其他时候就会返回原对象
 			 *       · 其实 aop的原理就是通过生成一个代理对象、来对原对象进行加强
+			 *       · 这是可能会生成 aop代理对象的第一个地方
 			 */
 			addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
 		}
@@ -709,6 +719,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			/**
 			 * 4.2 初始化，经过初始化后的 exposedObject可能是原对象、也可能是代理对象
 			 *     aop生成代理对象的过程就是在这里实现的（或者说，aop就是通过一个特殊的 BeanPostProcessor实现的）
+			 *     这是可能会生成 aop代理对象的第二个地方
 			 */
 			exposedObject = initializeBean(beanName, exposedObject, mbd);
 		}
@@ -1323,17 +1334,25 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		 * 4. 这里通过两种特殊的方式获取了构造器、并且进行实例化
 		 *    第一种是先判断当前 ioc容器中是否存在实现了 SmartInstantiationAwareBeanPostProcessor的 bean
 		 *      · 如果有的话就用这个 SmartInstantiationAwareBeanPostProcessor.determineCandidateConstructors()来获取一个构造器
-		 *      · 咱也不知道这是干啥的，没用过啊
-		 *    第二种是获取使用了 preferredConstructors描述的构造器
-		 *      · 这种构造器是首选构造器、会优先调用
-		 *      · Todo：但是我没看到这玩意是通过哪个注解生效的
+		 *    spring会注入一个叫 AutowiredAnnotationBeanPostProcessor的bean，这个 bean就实现了 SmartInstantiationAwareBeanPostProcessor
+		 *      · 这个 bean的 determineCandidateConstructors()会找到一些特殊的构造器返回回来
+		 *      · 什么叫特殊的构造器？
+		 *        · 实际上就是我们加了 @Autowired的构造器
+		 *    如果你是从第三个测试用例进来看到这里、那么可以进到 AutowiredAnnotationBeanPostProcessor.determineCandidateConstructors()看看
+		 *    如果是第一个测试用例那就先跳过这一部分
 		 */
 		Constructor<?>[] ctors = determineConstructorsFromBeanPostProcessors(beanClass, beanName);
 		if (ctors != null || mbd.getResolvedAutowireMode() == AUTOWIRE_CONSTRUCTOR ||
 				mbd.hasConstructorArgumentValues() || !ObjectUtils.isEmpty(args)) {
 			return autowireConstructor(beanName, mbd, ctors, args);
 		}
+
 		// Preferred constructors for default construction?
+		/**
+		 * 4.1 第二种是获取使用了 preferredConstructors描述的构造器
+		 * 		 · 这种构造器是首选构造器、会优先调用
+		 * 		 · Todo：但是我没看到这玩意是通过哪个注解生效的
+		 */
 		ctors = mbd.getPreferredConstructors();
 		if (ctors != null) {
 			return autowireConstructor(beanName, mbd, ctors, null);

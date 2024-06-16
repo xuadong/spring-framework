@@ -1,14 +1,15 @@
-package com.adong.study.bean;
+package com.adong.study.bean.constructor;
 
-import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-@Data
 @Component
 public class Person {
-	private String name;
+	public Cat cat;
+
 	@Autowired
-	private Cat cat;
+	public Person(Cat cat)
+	{
+		this.cat = cat;
+	}
 }

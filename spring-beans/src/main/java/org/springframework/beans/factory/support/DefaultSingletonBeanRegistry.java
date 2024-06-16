@@ -209,7 +209,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 		// Quick check for existing instance without full singleton lock.
 		/**
-		 * 1. 首先从三级缓存中获取完整的 bean
+		 * 1. 首先从一级缓存中获取完整的 bean
 		 */
 		Object singletonObject = this.singletonObjects.get(beanName);
 
@@ -250,23 +250,30 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 						singletonObject = this.earlySingletonObjects.get(beanName);
 						if (singletonObject == null) {
 							/**
-							 * 2.3 双重检查进来了说明二级缓存中这个 bean确实不存在、那么我就可以考虑从一级缓存中获取其对象工厂
+							 * 2.3 双重检查进来了说明二级缓存中这个 bean确实不存在、那么我就可以考虑从三级缓存中获取其对象工厂
 							 */
 							ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
 							if (singletonFactory != null) {
 								/**
-								 * 2.4 其对象工厂不为空、那么就用该对象工厂实例化一个 bean
-								 *     并且将这个 bean的对象工厂从一级缓存中 remove走：
-								 *       · 如果 remove成功了，说明当前 bean的完整对象还没有被构建出来、那么就将 bean加入到二级缓存中
-								 *       · 如果没 remove成功，说明当前 bean的完整对象已经被构建出来了、那么直接返回三级缓存中的完整 bean即可
-								 *     这里需要考虑 remove是否成功主要是因为前面只在二级缓存那一层做了双重检查、而没有在三级缓存那一层做
+								 * 2.4 其对象工厂不为空、那么就用该对象工厂获得一个 bean
+								 *       · 想一下我们之前的循环依赖场景
+								 *       · 我们此时正在创建 cat、并且把 cat的对象工厂加入三级缓存中了（这个对象工厂返回的就是正在创建的这个 cat对象）
+								 *       · 然后我们发现 cat依赖 person、所以就会开始实例化 person，实例化 person的时候又需要注入 cat
+								 *       · 这个时候就会走到这个方法来，此时的 singletonObject = singletonFactory.getObject()就是我们之前正在创建的那个 cat
 								 */
 								singletonObject = singletonFactory.getObject();
+
 								// Singleton could have been added or removed in the meantime.
+								/**
+								 * 	2.5 之后将这个 bean的对象工厂从三级缓存中 remove走：
+								 * 	      · 如果 remove成功了，说明当前 bean的完整对象还没有被构建出来、那么就将 bean加入到二级缓存中
+								 * 	      · 如果没 remove成功，说明当前 bean的完整对象已经被构建出来了、那么直接返回一级缓存中的完整 bean即可
+								 * 	    这里需要考虑 remove是否成功主要是因为前面只在二级缓存那一层做了双重检查、而没有在三级缓存那一层做
+								 */
 								if (this.singletonFactories.remove(beanName) != null) {
 									/**
-									 * 2.5 这里注意，加入到二级缓存的 bean实际上就是通过对象工厂得到的 bean
-									 *     也就是我们前面传入到
+									 * 2.6 这里注意，加入到二级缓存的 bean实际上就是通过对象工厂得到的 bean
+									 *     同时这个也是我们之前在创建的 bean
 									 */
 									this.earlySingletonObjects.put(beanName, singletonObject);
 								}

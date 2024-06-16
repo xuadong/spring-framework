@@ -376,6 +376,10 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 	public Constructor<?>[] determineCandidateConstructors(Class<?> beanClass, final String beanName)
 			throws BeanCreationException {
 
+		/**
+		 * 1. 这里的逻辑比较复杂、不深究，
+		 *    我们只需要找一个地方：就是他在哪寻找添加了@Autowired的构造器并返回会去即可
+		 */
 		checkLookupMethods(beanClass, beanName);
 
 		// Quick check on the concurrent map first, with minimal locking.
@@ -406,6 +410,11 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 						else if (primaryConstructor != null) {
 							continue;
 						}
+
+						/**
+						 * 2. 其实就是这里、他会寻找添加了@Autowired注解的构造器并返回回去
+						 *    其他就不看了，知道他干了这么件事就可以了
+						 */
 						MergedAnnotation<?> ann = findAutowiredAnnotation(candidate);
 						if (ann == null) {
 							Class<?> userClass = ClassUtils.getUserClass(beanClass);
@@ -523,12 +532,8 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 			/**
 			 * 2. 通过反射、进行注入
 			 *    这里分为两步：
-			 *      · 首先找到需要注入的属性、以及需要注入进去的 value
+			 *      · 首先找到需要注入的属性、以及需要注入进去的 value（这里的第一步实际上就是 getBean()的过程）
 			 *      · 然后通过反射进行注入
-			 *    此时再想想我们之前的循环依赖场景：
-			 *      · 我们正在创建 A，然后 A里面需要一个 B，于是我们去创建 B
-			 *      · 然后我们发现 B里面又需要 A，于是我们通过一级缓存拿到了 A的一个早期对象
-			 *      · 而这个早期对象就是我们这里第一步中所需要寻找 value
 			 *    同时，我们找到了这个早期对象以后我们还会将这个早期对象加入到二级缓存中去、方便后期使用
 			 *    （但是这个代码太深了，里面实在看不懂，建议大家结合 debug自己看一下，这一块太深了）
 			 */

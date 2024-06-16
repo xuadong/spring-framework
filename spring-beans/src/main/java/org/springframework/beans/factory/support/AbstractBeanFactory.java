@@ -263,26 +263,25 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		 * 2. 这个 beanInstance就是我们实际要实例化的 bean了
 		 *    在阅读下面的代码之前，我建议先学习一下什么是 spring的三级缓存：https://www.bilibili.com/video/BV1AJ4m157MU/?spm_id_from=333.337.search-card.all.click&vd_source=518190bab3b3e2971cc65c44a208669f
 		 *      · 每一级缓存实际上就是一个 map、每个 map存储的都是处于不同时期的 bean
-		 *      · 三级缓存 singletonObjects：存储的是完整的 bean、这里的 bean就是我们 ioc容器中最终注入的那个
-		 *      · 二级缓存 earlySingletonObjects：存储的是早期暴露的 bean、这里的 bean主要是用来给其他 bean进行依赖注入用的
-		 *      · 二级缓存 earlyProxyReferences： 存储的是早期暴露的被代理的 bean、这里的 bean也是给其他 bean进行依赖注入用的
-		 *      · 一级缓存 singletonFactories：存储的是创建 bean 的工厂方法、通过这个工厂方法可以创建 bean
+		 *      · 一级缓存 singletonObjects：存储的是完整的 bean、这里的 bean就是我们 ioc容器中最终注入的那个
+		 *      · 二级缓存 earlySingletonObjects：存储的是早期暴露的不完整的 bean、这里的 bean主要是用来给其他 bean进行依赖注入用的
+		 *      · 三级缓存 singletonFactories：存储的是创建 bean 的工厂方法、通过这个工厂方法可以创建 bean
 		 *        · 这里的工厂对象可能返回的是原对象、也可能返回的是代理对象
 		 *        · 具体返回哪个对象我们在下面会看到
-		 *      · 还有一个 creating set叫 singletonsCurrentlyInCreation：用来存储当前正在被创建的 beanName
+		 *      · 还有一个 singletonsCurrentlyInCreation：用来存储当前正在被创建的 beanName、用来标识哪些 bean正在被创建
 		 *      · 还有一个 alreadyCreated：用来存储创建好的 beanName
+		 *      · 还有一个 earlyProxyReferences：用来存储已经代理过的 bean、避免重复重复代理
 		 */
 		Object beanInstance;
 
 		// Eagerly check singleton cache for manually registered singletons.
 		/**
 		 * 3. 首先我们尝试在缓存中获取这个 bean
-		 *    这里获取的是会从三级、二级、一级缓存中逐个去获取这个 bean
+		 *    这里获取的是会从一级、二级、三级缓存中逐个去获取这个 bean
 		 *    此时我们开始思考一个循环依赖的场景，实际上也就是我项目中写的场景：
 		 *      · 需要向 ioc容器中注入一个 cat和一个 person对象
 		 *      · 其中 cat依赖 person、person也依赖 cat
 		 *      · 这就是典型的循环依赖场景，我们来看看 spring是如何解决这个循环依赖场景的
-		 *    由于 Cat.java文件在 Person.java文件的上面，所以会先实例化 cat对象
 		 *      · 始终记住这个循环依赖场景、这对我们理解三级缓存很有用
 		 */
 		Object sharedInstance = getSingleton(beanName);

@@ -1052,7 +1052,8 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 				/**
 				 * 4. 如果当前 BeanDefinition并不是一个抽象类的、并且是单例的、那么我们现在就去实例化这个 bean
 				 *    这里有两个点：
-				 *      · 第一点，抽象类是不能注入到 ioc容器中的（Todo：可以做个实验试试）
+				 *      · 第一点，抽象类是不能注入到 ioc容器中的
+				 *        · 可以看看我写的第二个测试用例、自己 debug一下就能证实
 				 *      · 第二点，只有作用域是单例的 bean才会在 ioc容器的时候实例化（其他作用域的时候基本是需要了就实例化一个、每次实例化的不是同一个 bean）
 				 *    这里的 preInstantiateSingleton()就是根据 beanName和 BeanDefinition来实例化一个 bean
 				 *    所以进去 preInstantiateSingleton(beanName, mbd)看看
@@ -1071,6 +1072,12 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		if (!futures.isEmpty()) {
 			/**
 			 * 5. 等待所有线程都执行完成后、bean也全部实例化完成了
+			 *    我们看完了所有 bean的实例过程、也知道了三级缓存是如何解决循环依赖问题的，那么思考一下、一定要三级缓存吗？不要二级或者不要三级缓存可以吗？
+			 *      · 其实回顾整个三级缓存的作用机制，会发现二级缓存和三级缓存的作用有点类似
+			 *      · 二级缓存存的是不完整的 bean、而三级缓存存的是获取这个不完整 bean的对象工厂
+			 *      · 所以如果只有一级+二级缓存好像整个流程也能走通、只不过将其中从三级缓存获取对象工厂的过程替换成从二级缓存的 map.get()的过程
+			 *    那 spring为什么还要设计三级缓存呢？
+			 *      · 我觉得主要是为了功能解耦、让代码结构更清晰，三级缓存各司其职
 			 */
 			try {
 				CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0])).join();
@@ -1083,7 +1090,6 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		// Trigger post-initialization callback for all applicable beans...
 		/**
 		 * 6. 最后触发一下 SmartInitializingSingleton这个后置处理器、在 bean实例化完成后调用 afterSingletonsInstantiated()
-		 *    Todo：懒加载的 bean的实例化应该就是在这里执行的吧？
 		 *    到此、ioc容器的启动就已经全部完成啦
 		 */
 		for (String beanName : beanNames) {
@@ -1134,7 +1140,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 
 		/**
 		 * 2. 如果不是后台注入、并且不是懒加载的 bean，就直接实例化这个 bean
-		 *    Todo：懒加载的 bean是什么时候注入的呢？
+		 *    思考一个问题：懒加载的 bean是什么是够实例化的呢？我们可以通过我写的第四个测试用例看一看这个问题、现在我们先接着往下看
 		 *    继续进入 instantiateSingleton(beanName)看看
 		 */
 		if (!mbd.isLazyInit()) {
