@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.adong.test.AdongTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2024-06-16T13:29:38" hostname="192.168.2.5" time="50.188">
+<testsuite name="com.adong.test.AdongTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2024-06-17T02:32:04" hostname="lajimac.local" time="9.035">
   <properties/>
-  <testcase name="testLazy()" classname="com.adong.test.AdongTest" time="50.188"/>
-  <system-out><![CDATA[wait wait wait1
-wait wait wait2
+  <testcase name="testAopInvalid()" classname="com.adong.test.AdongTest" time="9.035"/>
+  <system-out><![CDATA[hello hello hey
+bye bye bye
+wait wait wait
+before hello
+hello hello hey
+before bye
+bye bye bye
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
