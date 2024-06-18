@@ -1,4 +1,4 @@
-package com.adong.study.bean.aopInvalid;
+package com.adong.study.bean.aopInvalid.multiAop;
 
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
@@ -7,14 +7,14 @@ import org.springframework.stereotype.Component;
 
 @Aspect
 @Component
-public class MyByeAopAspect {
+public class MyInvokeAopAspect {
 
-	@Pointcut("execution(* com.adong.study.bean.aopInvalid.*.bye(..))")
+	@Pointcut("execution(* com.adong.study.bean.aopInvalid.multiAop.*.invokeHello(..))")
 	public void pointCut(){}
 
 	@Before("pointCut()")
 	public void before() {
-		System.out.println("before bye");
+		System.out.println("before invoke");
 	}
 
 }

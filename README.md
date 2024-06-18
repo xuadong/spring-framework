@@ -8,3 +8,4 @@
    1. 先下载 gradle并配置镜像
    2. gradle版本是 8.7的版本、jdk是 17
 3. 然后我们从 com.adong.test.AdongTest 类开始看即可
+4. 欢迎大家找我讨论源码问题，邮箱：xuadong@163.com

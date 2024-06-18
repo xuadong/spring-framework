@@ -1,4 +1,4 @@
-package com.adong.study.bean.aopInvalid;
+package com.adong.study.bean.aopInvalid.invalid;
 
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class MyHelloAopAspect {
 
-	@Pointcut("execution(* com.adong.study.bean.aopInvalid.*.hello(..))")
+	@Pointcut("execution(* com.adong.study.bean.aopInvalid.invalid.*.hello(..))")
 	public void pointCut(){}
 
 	@Before("pointCut()")

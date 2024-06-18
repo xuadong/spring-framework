@@ -1,4 +1,4 @@
-package com.adong.study.bean.aopInvalid;
+package com.adong.study.bean.aopInvalid.multiAop;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
