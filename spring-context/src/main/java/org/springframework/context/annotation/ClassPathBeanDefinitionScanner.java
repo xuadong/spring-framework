@@ -265,8 +265,11 @@ public class ClassPathBeanDefinitionScanner extends ClassPathScanningCandidateCo
 
 		// Register annotation config processors, if necessary.
 		/**
-		 * 3. 下面是注册 annotation config processors，主要是 Spring Boot在编译时用来处理 @Configuration 注解的组件
-		 *    目前不知道是干啥用的，先跳过把
+		 * 3. 下面是注册 annotation config processors
+		 *    里面主要是处理了一些必要类型的 bean：
+		 *      · 这个方法会判断当前所有的 beanDefinition中有没有一些必要的 bean、没有的话就必须手动加上
+		 *      · 比如说自动注入处理器、事件监听器等等
+		 *      · 这些 bean是 ioc容器启动所必须的 bean、如果连这些 bean对应的 beanDefinition都没有、那么 ioc容器的功能会不完整
 		 */
 		if (this.includeAnnotationConfig) {
 			AnnotationConfigUtils.registerAnnotationConfigProcessors(this.registry);

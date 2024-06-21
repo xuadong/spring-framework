@@ -71,6 +71,7 @@ public class AdongTest {
 	 *    首先需要引入 aop相关的依赖、并且创建一个配置类来开启 aop的能力（也就是我们的 TestAopConfiguration以及上面的 @EnableAspectJAutoProxy）
 	 *      · 实际上这个@EnableAspectJAutoProxy加在任意一个 bean上都是可以的（在 spring项目中通常会加在启动类上）
 	 *      · 这种 @EnableXXX这一类的注解其实就是会向 ioc容器中提前注入一个后置处理器、然后通过这个后置处理器来实现一些逻辑
+	 *      · 具体的注入位置在 AbstractApplicationContext#656
 	 *    有一个 MyAopAspect的切面类、会对当前包路径下的所有 bean进行代理
 	 *      · 代理的结果是当前包下的所有 bean的任意方法被调用之前会先打印一个 "before method aspect"
 	 *    有一个 TestAopInterface的接口、里面有一个 say方法
@@ -175,7 +176,7 @@ public class AdongTest {
 		 *       · 也就是 A方法内部调用了被切面增强的 B方法、此时调用 A方法时、B方法的切面逻辑是不生效的
 		 *     你可能会觉得是我的切面写的有问题，所以我在下面又调用了 bean.hello()，一起看看结果
 		 */
-		bean.invokeHello();
+//		bean.invokeHello();
 
 		System.out.println("wait wait wait");
 

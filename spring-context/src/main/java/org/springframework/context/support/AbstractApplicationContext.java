@@ -623,6 +623,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 			/**
 			 * 5. 准备一下 beanFactory
 			 *    比如 ClassLoader（类加载器）、BeanExpressionResolver（表达式解析器，就是解析 ${exp}的组件）之类的
+			 *    然后提前注入了一些环境变量、系统变量对应的 bean、方便后续使用
 			 */
 			prepareBeanFactory(beanFactory);
 
@@ -644,7 +645,13 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 				 *	7. 这里才是调用 beanFactory的后置处理器
 				 * 	   如果你希望在 beanFactory初始化完成以后进行一些逻辑处理、那么就可以配置一些 beanFactory的后置处理器，此时就会被调用
 				 * 	   实现逻辑就是遍历当前所有的 BeanDefinition、然后看哪些是实现了 BeanDefinitionRegistryPostProcessor的、然后调用他们的 postProcessor()
-				 * 	     · 里面还包含一些对@PriorityOrder和@Order的排序逻辑（这俩注解决定了后置处理器的先后顺序）、其他没什么特别的
+				 * 	     · 里面还包含一些对@PriorityOrder和@Order的排序逻辑（这俩注解决定了后置处理器的先后顺序）
+				 * 	   下面这些内容可以等到看完了我写的第四个测试用例再来看，前面几个测试用例看到这里估计看不懂
+				 * 	   注意，@Import注解的处理也是在这里面，也就是在获取到 beanFactory之后、实例化所有非合成的 bean之前、会处理所有@Import导入的 BeanDefinition
+				 * 	     · 这也是自动装配的原理，也是@EnableXXX的原理
+				 * 	     · @EnableXXX实际上就是在这里提前注入了自定义的 bean的后置处理器对应的 BeanDefinition
+				 * 	     · 在第8步、会去优先实例化这些自定义后置处理器
+				 * 	     · 然后在每个 bean的实例化过程中去调用这些自定义后置处理器中的自定义逻辑
 				 */
 				invokeBeanFactoryPostProcessors(beanFactory);
 
@@ -691,6 +698,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 				// Initialize other special beans in specific context subclasses.
 				/**
 				 * 11. 这个方法看着很厉害，但其实没什么用，他是一个空方法、留着给子类拓展用的，真正的实例化过程不在这儿
+				 *     比如 spring-boot中启动 tomcat就是放在子类的这个方法里面
 				 */
 				onRefresh();
 
@@ -832,13 +840,13 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	protected ConfigurableListableBeanFactory obtainFreshBeanFactory() {
 		/**
 		 * 1. 刷新 beanFactory
-		 *    这里调用的是 GenericApplicationContext.refreshBeanFactory()
+		 *    这里调用的是 GenericApplicationContext#refreshBeanFactory()
 		 */
 		refreshBeanFactory();
 
 		/**
 		 * 2. 获取 beanFactory
-		 *    这里调用的是 GenericApplicationContext.getBeanFactory()
+		 *    这里调用的是 GenericApplicationContext#getBeanFactory()
 		 */
 		return getBeanFactory();
 	}
