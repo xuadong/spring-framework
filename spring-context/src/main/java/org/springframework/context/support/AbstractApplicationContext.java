@@ -18,14 +18,7 @@ package org.springframework.context.support;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
@@ -644,7 +637,9 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 				/**
 				 *	7. 这里才是调用 beanFactory的后置处理器
 				 * 	   如果你希望在 beanFactory初始化完成以后进行一些逻辑处理、那么就可以配置一些 beanFactory的后置处理器，此时就会被调用
-				 * 	   实现逻辑就是遍历当前所有的 BeanDefinition、然后看哪些是实现了 BeanDefinitionRegistryPostProcessor的、然后调用他们的 postProcessor()
+				 * 	   实现逻辑就是遍历 this.beanFactoryPostProcessors、然后调用他们的 postProcessor()
+				 * 	     · this.beanFactoryPostProcessors的后置处理器是在扫包的过程中就注入进来了
+				 * 	     · 具体位置在 ClassPathBeanDefinitionScanner#274
 				 * 	     · 里面还包含一些对@PriorityOrder和@Order的排序逻辑（这俩注解决定了后置处理器的先后顺序）
 				 * 	   下面这些内容可以等到看完了我写的第四个测试用例再来看，前面几个测试用例看到这里估计看不懂
 				 * 	   注意，@Import注解的处理也是在这里面，也就是在获取到 beanFactory之后、实例化所有非合成的 bean之前、会处理所有@Import导入的 BeanDefinition
@@ -658,7 +653,9 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 				// Register bean processors that intercept bean creation.
 				/**
 				 * 8. 注入 bean的后置处理器（实例化所有的 bean的后置处理器）
-				 * 	  注意区分一下 beanFactory的后置处理器和 bean的后置处理器，主要区别就是：一个是在 beanFactory初始化后调用、一个是在每个 bean的初始化后调用
+				 * 	    · 注意区分一下 beanFactory的后置处理器和 bean的后置处理器，主要区别就是：一个是在 beanFactory初始化后调用、一个是在每个 bean的初始化后调用
+				 * 	  这里首先找到所有的 bean的后置处理器：
+				 * 	    · 找的过程就是遍历当前所有容器中所有的 beanDefinition、然后看看哪些实现了 BeanPostProcessor接口的、对其进行实例化即可
 				 * 	  这里要先把这些 bean的后置处理器对应的 bean注入到 ioc容器中、后面处理每个 bean的时候才能调用这些处理器
 				 * 	  这个实例化的过程和普通的 bean的实例化过程有一点区别
 				 * 	    · 普通的 bean的实例化时需要处理内部依赖，比如 a依赖了 b、那么就需要把 b先实例化出来，然后才能把 a实例化出来

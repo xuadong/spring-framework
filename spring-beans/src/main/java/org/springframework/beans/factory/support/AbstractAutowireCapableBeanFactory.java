@@ -672,10 +672,10 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 						"' to allow for resolving potential circular references");
 			}
 			/**
-			 * 3.1 支持早期暴露的话、我们就可以将当前 bean封装成一个对象工厂并添加到一级缓存中去、后面出现循环依赖问题时就可以使用这个工厂获取bean
+			 * 3.1 支持早期暴露的话、我们就可以将当前 bean封装成一个对象工厂并添加到三级缓存中去、后面出现循环依赖问题时就可以使用这个工厂获取bean
 			 *     注意，这里的对象工厂返回的对象实际上就是我们传给 getEarlyBeanReference()的 bean
 			 *     想一下我们之前说的循环依赖场景：
-			 *       · 此时我们正在创建 cat，然后我们现在把这个 cat封装成对象工厂加到一级缓存中去了
+			 *       · 此时我们正在创建 cat，然后我们现在把这个 cat封装成对象工厂加到三级缓存中去了
 			 *       · 后面创建 person的时候需要 cat、那么就可以从一级缓存中获取这个 cat了
 			 *       · 这就是第一个通过操作三级缓存来解决循环依赖问题的地方
 			 *     同时这里返回的可能是原对象也可能是代理对象、主要取决于我们传入的 bean是什么对象
@@ -699,7 +699,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			 *     想一下我们之前的循环依赖场景：
 			 *       · 此时我们正在创建 cat，cat里面依赖了 person
 			 *       · 然后这个 populateBean()方法就会为 cat注入 person、所以我们要先找到 person
-			 *         · 此时 ioc容器中的三级缓存中只有一级缓存中有一个 cat的对象工厂（也就是上面第3.1步加入缓存的）
+			 *         · 此时 ioc容器中的三级缓存中只有三级缓存中有一个 cat的对象工厂（也就是上面第3.1步加入缓存的）
 			 *       · 找 person过程中就会发现当前 ioc容器中没有 person、所以就会执行 getBean("person")的逻辑
 			 *       · 那么实际上就是在执行创建 person的过程、但由于 person也是第一次创建、实际上又会再次走到这个 populateBean()方法
 			 *         · 此时我们正在创建 person、需要注入 cat对象

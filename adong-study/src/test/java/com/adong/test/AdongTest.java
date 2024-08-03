@@ -71,7 +71,7 @@ public class AdongTest {
 	 *    首先需要引入 aop相关的依赖、并且创建一个配置类来开启 aop的能力（也就是我们的 TestAopConfiguration以及上面的 @EnableAspectJAutoProxy）
 	 *      · 实际上这个@EnableAspectJAutoProxy加在任意一个 bean上都是可以的（在 spring项目中通常会加在启动类上）
 	 *      · 这种 @EnableXXX这一类的注解其实就是会向 ioc容器中提前注入一个后置处理器、然后通过这个后置处理器来实现一些逻辑
-	 *      · 具体的注入位置在 AbstractApplicationContext#656
+	 *      · 具体的注入位置在 AbstractApplicationContext#658
 	 *    有一个 MyAopAspect的切面类、会对当前包路径下的所有 bean进行代理
 	 *      · 代理的结果是当前包下的所有 bean的任意方法被调用之前会先打印一个 "before method aspect"
 	 *    有一个 TestAopInterface的接口、里面有一个 say方法
@@ -129,25 +129,26 @@ public class AdongTest {
 		}
 
 		/**
-		 * 4.5 最后，我们可以看一下在源码的什么地方会生成代理，有以下三个位置会判断是否需要生成代理：
-		 *       · AbstractAutowireCapableBeanFactory#534
-		 *       · AbstractAutowireCapableBeanFactory#686
-		 *       · AbstractAutowireCapableBeanFactory#727
-		 *     当需要回答 aop是怎么实现的时候可以考虑这么说：
-		 *       · 简单来说，aop是通过代理的方式来实现的、即通过对原对象进行加强后执行代理的增强逻辑，接下来具体说说如何实现
+		 * 4.5 当需要回答 aop是怎么实现的时候可以考虑这么说：
+		 *       · 简单来说，aop是通过代理的方式来实现的、即通过对原对象进行加强后执行代理的增强后的切面逻辑
+		 *     接下来具体说说如何实现：
 		 *       · 首先要使用 aop需要引入一个@EnableAspectJAutoProxy注解
-		 *       · 引入这个注解以后、在 ioc容器的启动过程中 spring会向 ioc容器里面注入一个特殊类型的后置处理器
-		 *       · 这个后置处理器主要有两个功能：
+		 *       · 引入这个注解以后、在 ioc容器的启动过程中 spring会向 ioc容器里面注入一个特殊类型的 bean后置处理器
+		 *       · 这个 bean后置处理器主要有两个功能：
 		 *         · 第一个是在 ioc容器启动过程中、在所有 bean实例化之前先将所有的切面添加到一个集合中
-		 *         · 第二个作用就是在每个 bean的实例化过程中去判断当前 bean有没有与之对应的切面、如果有的话就为其创建代理
+		 *           · Todo：具体在哪个位置将切面添加到这个集合中的呢？
+		 *         · 第二个作用就是在每个 bean的实例化过程中去判断当前 bean有没有与之对应的切面、如果有的话就为其创建代理，具体生成代理的位置有以下三个
+		 *           · AbstractAutowireCapableBeanFactory#534
+		 *           · AbstractAutowireCapableBeanFactory#686
+		 *           · AbstractAutowireCapableBeanFactory#727
 		 *       · 生成代理有两种方式：
-		 *         · 分别是 jdk代理和 cglib代理，我们可以在@EnableAspectJAutoProxy的 proxyTargetClass属性来指定使用哪种代理
-		 *           · 如果没有指定代理的话、spring也有一个默认的代理策略
-		 *         · 第一种是 jdk代理，在 spring默认的代理策略中、当前正在实例化的 bean如果实现了某个接口、就会使用这种代理
-		 *           · jdk代理会实现接口中需要被代理的方法，进行逻辑加强、之后通过反射来调用原有方法来实现 aop
-		 *         · 第二种是 cglib代理，在 spring默认的代理策略中、除了刚才说的实现了接口的情况、其他时候都会使用这种代理
-		 *           · cglib代理会生成当前 bean的一个子类并且重写这个 bean中需要被代理的方法、进行逻辑加强后生成一个新的字节码文件
-		 *           · 之后调用原方法时直接调用代理中的增强方法来实现 aop
+		 *         · 分别是 jdk代理和 cglib代理，我们可以在@EnableAspectJAutoProxy的 proxyTargetClass属性来表明是否指定使用 cglib代理
+		 *         · 如果没有指定代理的话、spring也有一个默认的代理策略：
+		 *           · 第一种是 jdk代理，在 spring默认的代理策略中、当前正在实例化的 bean如果实现了某个接口、就会使用这种代理
+		 *             · jdk代理会实现接口中需要被代理的方法，进行逻辑加强、之后通过反射来调用原有方法来实现 aop
+		 *           · 第二种是 cglib代理，在 spring默认的代理策略中、除了刚才说的实现了接口的情况、其他时候都会使用这种代理
+		 *             · cglib代理会生成当前 bean的一个子类并且重写这个 bean中需要被代理的方法、进行逻辑加强后生成一个新的字节码文件
+		 *             · 之后调用原方法时直接调用代理中的增强方法来实现 aop
 		 */
 	}
 
@@ -176,7 +177,7 @@ public class AdongTest {
 		 *       · 也就是 A方法内部调用了被切面增强的 B方法、此时调用 A方法时、B方法的切面逻辑是不生效的
 		 *     你可能会觉得是我的切面写的有问题，所以我在下面又调用了 bean.hello()，一起看看结果
 		 */
-//		bean.invokeHello();
+		bean.invokeHello();
 
 		System.out.println("wait wait wait");
 

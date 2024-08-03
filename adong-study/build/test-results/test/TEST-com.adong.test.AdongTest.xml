@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.adong.test.AdongTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2024-06-18T17:00:08" hostname="lajimac.local" time="0.439">
+<testsuite name="com.adong.test.AdongTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2024-07-26T02:31:09" hostname="lajimac.local" time="0.389">
   <properties/>
-  <testcase name="testAopInvalidAutowiredSelf()" classname="com.adong.test.AdongTest" time="0.439"/>
-  <system-out><![CDATA[before hello
+  <testcase name="testAopInvalidMultiAop()" classname="com.adong.test.AdongTest" time="0.389"/>
+  <system-out><![CDATA[before invoke
 hello hello hey
 wait wait wait
 before hello
 hello hello hey
 ]]></system-out>
-  <system-err><![CDATA[]]></system-err>
+  <system-err><![CDATA[CGLIB debugging enabled, writing to 'cglib'
+]]></system-err>
 </testsuite>
